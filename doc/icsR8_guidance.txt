@@ -1,0 +1,312 @@
+2026年度前期2
+
+情報通信システム論Ⅰ（電気・電子情報工学専攻）
+情報通信システム特論Ⅰ （情報・知能工学専攻）
+Information and Communication Systems 1
+
+上原 秀幸
+UEHARA Hideyuki
+Dept. of Electrical and Electronic Information Eng.
+ver. 20260408
+
+©2018 Hideyuki Uehara
+
+目的 Objectives
+無線システムに関する最近の話題と課題をいくつか取り上げ，それらの解決策
+を考案することを通じて，最新および将来の無線技術に対する洞察を深めるこ
+とを目標とする。
+This class aims to deepen insight into current and future wireless technologies by discussing recent topics
+and issues related to wireless systems and devising solutions.
+
+達成目標 Goals
+(1) 与えられた課題の本質を理解できる。
+Understand the essence of a given problem.
+
+(2) 課題に対する具体的な解決策を考案し，論理明快に説明できる。
+Think of solutions to the problem and explain them logically and clearly.
+
+(3) グループで協調して課題に取り組み，積極的に討論できる。
+Work together in groups and tackle the problem through active discussion.
+
+©2018 Hideyuki Uehara
+
+成績評価 Evaluation
+以下の条件をすべて満たした者に対して達成目標の全体の達成度を総合的に評
+価する。条件を満たしていない者は履修放棄 (H) とする。
+Only students who meet ALL of the following requirements will be evaluated for the achievement level of the
+goals. Credit will be approved only if all the requirements are fulfilled; otherwise, it will be marked as
+Abandonment (H).
+
+最終報告書（各自）
+Project report (per person)
+
+課題発表会（各グループ）
+Project presentation and discussion (per group)
+
+合計
+
+50点（30点以上で合格）
+50 points (Passed with 30 points or more)
+
+50点（30点以上で合格）
+50 points (Passed with 30 points or more)
+
+100点（60点以上で合格）
+
+Total
+
+100 points (Passed with 60 points or more)
+
+必要条件 Requirements
+① 初回の講義に出席しグループ配属されていること
+Attend the first class and be assigned to a group
+
+② 中間報告会に出席し議論に参加していること
+Attend the progress meeting and discussion class
+
+③ 課題発表会に出席し議論に参加していること
+Attend the project presentation and discussion class
+
+加点あり Bonus points
+• グループリーダー
+Group leader
+
+• 優秀な方式
+Excellent methods
+
+• 多く質問した人
+Students who asked a lot of
+questions
+
+④ 最終報告書を提出し受理されていること
+Submit a project report and have it accepted
+
+©2018 Hideyuki Uehara
+
+講義予定 Calendar
+
+出席必須日（対面）
+
+提出物
+
+Attendance is mandatory (in person)
+
+Reports
+
+W1
+6/15
+
+課題説明，グループ決定 @A-105
+Guidance and Grouping
+
+W2
+6/22
+
+グループ研究（課題理解，解決策考案，検証，
+資料作成等）
+Group Study
+
+W3
+6/29
+
+グループ研究（課題理解，解決策考案，検証，
+資料作成等）
+Group Study
+
+W4
+7/6
+
+中間報告会 @A-105
+Progress Meeting
+
+W5
+7/13
+
+グループ研究（課題理解，解決策考案，検証，
+資料作成等）
+Group Study
+
+W6
+7/23(木)
+
+グループ研究（課題理解，解決策考案，検証，
+資料作成等）
+Group Study
+
+W7
+7/27
+
+課題発表会（会場未定）1，2限
+Presentation & Discussion
+
+W8
+8/3
+
+7/27へ振替
+
+メンバーの都合の良い時間を活用して取り
+組んでください
+
+中間報告書提出：各グループ1部
+Deadline for Progress Report (per group)
+
+〆切：7/3(金) 12:00 @Classroom
+
+発表スライド提出：各グループ1部
+Deadline for Presentation Slides (per group)
+
+〆切：7/24(金) 12:00 @Classroom
+
+最終報告書提出：各自1部
+Deadline for Final Report (per person)
+
+〆切：8/4(火) 12:00 @Classroom
+©2018 Hideyuki Uehara
+
+グループ分け Grouping
+出席必須 6/15
+注意：
+グループ決定後の履修取消／放棄は原則禁止します（他のメンバーに迷惑となるため）
+In principle, cancelling a course after the group has been decided is prohibited. This is because it may be
+inconvenient for other members.
+
+グループ
+
+愛称
+
+リーダー
+氏名（〇〇研）
+
+メンバー1
+氏名（〇〇研）
+
+メンバー2
+氏名（〇〇研）
+
+メンバー3
+氏名（〇〇研）
+
+メンバー4
+氏名（〇〇研）
+
+A
+B
+C
+D
+E
+F
+G
+H
+J
+K
+L
+M
+N
+©2018 Hideyuki Uehara
+
+中間報告会 Progress Meeting & Discussion
+出席必須 7/6
+
+提出物 〆切：7/3(金) 12:00 @Classroom
+
+ü 事前にA4用紙1枚の中間報告書をグループで1部作成して提出してください．
+書式不問．
+Submit one copy of the progress report per group on one sheet of A4 paper. Any format is acceptable.
+
+ü ファイル名：A_progress.pdf（グループAの場合）
+File name: A_progress.pdf（for Group A）
+
+ü 当日は進捗状況をグループごとにインタビューして周ります
+Interview each group about the progress of their projects.
+
+Q：中間報告では何を報告すれば良いのですか？
+What should we report at the progress meeting?
+
+A：これまでにやったこと，これからやること，現時点での課題と対策，さらに相談事など
+あれば，それらを簡潔にまとめて報告してください．
+Please provide a summary of what your group has done so far, what your group plans to do, and any issues or concerns
+your group currently has.
+©2018 Hideyuki Uehara
+
+課題発表会 Project Presentation & Discussion
+出席必須 7/27
+
+提出物 〆切：7/24(金) 12:00 @Classroom
+
+1，2限
+ü 各グループから提出された発表スライドをクラスルームにアップしておくので，
+課題発表会当日までに他のグループのスライドを視聴し，質問事項等を考えてお
+くこと
+Presentation slides submitted by each group will be uploaded to the Classroom. After that, watch them and
+think about any questions you may have before the day of the project presentation & discussion.
+
+ü 1分程度の概要説明を行ってから質疑応答を始める．概要説明用，質疑応答用の
+スライドや資料を必要に応じて準備しておくこと
+Each group will give a one-minute summary of its work, followed by a Q&A session. Prepare slides and
+materials for the summary and Q&A, if necessary.
+
+ü 各グループの持ち時間は10分程度を予定しています．
+Each group will have approximately 10 minutes for summary and Q&A.
+
+©2018 Hideyuki Uehara
+
+発表スライド Presentation Slides
+提出物 〆切：7/24(金) 12:00 @Classroom
+ü 事前に下記２種類の発表スライドを各グループで1部づつ作成して提出すること．
+(a) MPEG4：ナレあり（約10分，100MB以下）(b) PDF：ナレなし
+Submit the TWO types (mp4/pdf) of presentation slides per group as follows: (a) MPEG4: w/ narration
+(approx. 10 min., less than 100MB), (b) PDF: w/o narration.
+
+ü ファイル名：B_slide.mp4 /*.pdf （グループBの場合）
+File name: B_slide.mp4 /*.pdf (for Group B)
+
+ü スライドには以下の３つの項目を必ず入れて，論理明快に説明してください
+Be sure to include the following three items on your slides and explain them logically and clearly.
+
+1. その手法を考案するに至った理由（例えば，着目した従来手法の問題点や伝
+搬特性など）
+What led you to devise the method (e.g., problems of the conventional methods or propagation
+characteristics you focused on, etc)
+
+2. 考案した手法の原理，仕様，処理の流れなど
+Mechanisms, specifications, and processing flows for your method
+
+3. 考案した手法の有効性（可能な限り定量的に）
+Effectiveness of your method (should be shown as quantitatively as possible)
+©2018 Hideyuki Uehara
+
+最終報告書 Profect Report
+提出物 〆切：8/4(火) 12:00 @Classroom
+ü 各自がオリジナルの報告書を作成すること
+Each student must prepare their own original report.
+
+ü 報告書は以下の構成とする（見出しは任意）．背景やテキストにある記述は不要．
+The report should be structured as follows. Section headings are optional. Background and any description
+in the text are not required.
+
+1. あらまし（400字程度）
+Summary (around 200 words)
+
+2. その手法を考案するに至った理由
+What led you to devise the method
+
+3. 考案した手法の原理，仕様，処理の流れなど
+Mechanisms, specifications, and processing flows for your method
+
+4. 考案した手法の有効性と考察
+Effectiveness and discussions of your method
+
+5. グループ内で自分が貢献したところ
+Your contributions to the group
+
+6. 参考文献
+References
+
+ü ファイル名：C_TempakuTaro.pdf（グループCの天伯太郎くんの場合）
+FILE NAME: C_TempakuTaro.pdf (for Tempaku Taro of Group C)
+
+ü 書式：２段組，3.5ページ以上4ページ以下（IEEE, IEICE, IPSJの論文書式推奨）
+FORMAT: Double-column, 3.5 to 4 pages (IEEE, IEICE, or IPSJ manuscript formats are recommended)
+©2018 Hideyuki Uehara
+
+
