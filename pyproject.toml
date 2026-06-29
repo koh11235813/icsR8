@@ -1,0 +1,33 @@
+[project]
+name = "icsr8"
+version = "0.1.0"
+description = "Indoor localization baseline library (PBL / CLA / WCL) for tutwifi RSSI dataset"
+authors = [
+    { name = "koh11235813", email = "77713907+koh11235813@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+oracle = [
+    "openpyxl>=3.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.24,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
