@@ -1,0 +1,497 @@
+================================================================================
+屋内位置推定の精度改善手法 — 調査ノート
+================================================================================
+作成日: 2026-06-22
+対象: icsR8（tutwifi / tutwifi2025 RSSIによる屋内位置推定）
+
+================================================================================
+1. 背景と目的
+================================================================================
+
+豊橋技術科学大学の学内WiFi（tutwifi / tutwifi2025）のRSSIのみを用いた屋内位置推定
+の精度改善が目的。ベースライン手法（WCL: 3.57m平均誤差）を2m未満に改善する。
+
+着眼点:
+  既存手法（WCL, CLA, PBL）は周波数帯ごとにデータを分離しておらず、
+  フリスの伝達公式による 20·log₁₀(f) の伝搬損失差（2.4GHz vs 6GHz で約8dB）
+  を無視している。この問題以外に、既存データから精度改善できる手法は何か。
+
+================================================================================
+2. 現状の把握
+================================================================================
+
+2.1 データ構造
+  - 測定点: 59地点、2m間隔、C棟3階のL字型廊下（C→C2→C3）
+  - AP: 3F座標既知13個 + 他階含め計48個が検出
+  - 周波数帯: 2.4GHz (2412-2462), 5GHz (5180-5700), 6GHz (5975-6415)
+  - 測定: 各地点10回、往路・復路の2方向
+  - SSID: tutwifi（レガシー）、tutwifi2025（WiFi 6E対応、6GHz帯あり）
+  - 集計データ: measured_RSSI_C3F.csv に RSSI平均・中央値・Count・周波数・AP名
+
+2.2 ベースライン性能（往路）
+  PBL:  平均 4.38m,  最大 13.6m
+  CLA:  平均 8.07m,  最大 24.2m
+  WCL:  平均 3.57m,  最大 11.9m
+
+2.3 WCLの根本的限界
+  - 推定位置は選択3APの凸包（convex hull）内に拘束される
+  - 角部（P16-P17付近）で12m超の誤差 → APの凸包外に真位置がある
+  - WCLの重み関数 w = RSSI_max - RSSI_min は恣意的で物理的根拠が薄い
+
+================================================================================
+3. 提案手法一覧（優先度順）
+================================================================================
+
+------------------------------------------------------------------------------
+Tier 1: 最優先（2m未満達成の本命）
+------------------------------------------------------------------------------
+
+[手法1] WKNN Fingerprinting（加重K近傍法）
+
+  概要:
+    RSSIベクトル全体をfingerprintとし、既知参照点のRSSIとの類似度で位置推定。
+
+  数式:
+    T = Σ(w_j · P_j) / Σ(w_j)
+    w_j = 1/d_RSSI²
+    d_RSSI = ||r_test - r_ref||₂
+
+  WCLに対する優位性:
+    - AP座標に依存せず凸包制約がない
+    - 座標不明の他階35APも特徴量として利用可能
+    - 角部P16-P17はC2棟APの出現パターンが特徴的 → fingerprint matchingが正確
+
+  実装ポイント:
+    - Feature vector: (AP_Name, band) 単位で構成
+    - 非検出APは -100 dBm で埋める（ただし手法2の確率的扱いが望ましい）
+    - K=1-7 と重み関数 (uniform, 1/d, 1/d²) を比較
+    - 往路でDB構築 → 復路でテスト（逆も実施）
+
+  実装難易度: 低〜中
+  期待改善: 1.5-2.5m削減
+
+------
+
+[手法2] 確率的 Fingerprinting（Student-t分布 + 打ち切り観測）
+
+  概要:
+    AP検出/非検出を二項分布、RSSIをStudent-t分布でモデル化し、MAP推定。
+
+  数式:
+    p(l|r,D) ∝ p(l) · Π_{a,b} p(r_{a,b}|l, D=1) · p(D_a|l)
+
+    RSSIの尤度:
+      p(r|l) = t_ν(r; μ_{l,a,b}, σ_{l,a,b})
+
+    非検出の尤度:
+      p(not detected|l) = P(R < T_b | l)
+      → -100dBm固定埋めより統計的に正当
+
+    検出確率:
+      C_{l,a,b} ~ Binomial(n_l, q_{l,a,b})
+      p(D_a|l) = q^{D_a} · (1-q)^{1-D_a}
+
+  Student-t を使う理由:
+    人体遮蔽やフェージングによる外れ値に対してGaussianより頑健。
+
+  過度に鋭いposteriorの防止策:
+    - 対角尤度に温度係数 β < 1 を入れる
+    - APを物理AP/帯域単位でグループ化
+    - 上位の安定APだけに限定
+
+  参考: Horus系 probabilistic fingerprinting の拡張として位置づけ可能
+    (Youssef and Agrawala, "The Horus Location Determination System")
+
+  実装難易度: 中
+  期待改善: 1.5-2.0m削減
+
+------
+
+[手法3] 廊下座標系 Gaussian Process Radio Map
+
+  概要:
+    廊下中心線上のarc-length座標 s ∈ [0, S] でRSSIをGPモデル化。
+
+  数式:
+    r_{a,b}(s) ~ GP(m(s), k(s,s'))
+
+    カーネル: Matérn-3/2
+      k(s,s') = σ_f² · (1 + √3|s-s'|/ℓ) · exp(-√3|s-s'|/ℓ)
+
+    位置推定:
+      log p(s|r) = -1/2 Σ_{a,b} [(r - μ(s))² / (v(s) + σ²) + log(v(s) + σ²)]
+
+  利点:
+    - 2m間隔の測定点間を連続補間可能
+    - AP毎に異なる空間的平滑性を学習
+    - 不確実性を尤度に直接反映
+    - 59地点なら計算量は問題にならない
+
+  重要:
+    L字廊下ではEuclidean距離でなく corridor geodesic distance を使用すること。
+    壁越しに近い点を強相関と見なすと逆効果。
+
+  発展形: 物理モデル（log-distance path loss）の残差にGPを適用
+    r(x) = P₀ - 10α·log₁₀(||x-x_a||/d₀) + g(s) + ε
+    g(s) ~ GP(0, k)  （multipath/壁/指向性の空間残差）
+
+  参考: Ferris, Fox and Lawrence, "WiFi-SLAM Using GP Latent Variable Models"
+
+  実装難易度: 中〜高
+  期待改善: 1.0-2.0m削減
+
+------------------------------------------------------------------------------
+Tier 2: 高効果（Tier 1と組み合わせ推奨）
+------------------------------------------------------------------------------
+
+[手法4] Centered / Relative RSSI（共通オフセット除去）
+
+  概要:
+    scan全体のRSSIオフセット δ_s を除去してfingerprintの頑健性を向上。
+
+  モデル:
+    r_{s,a} = μ_{l,a} + δ_s + ε_{s,a}
+    δ_s: 測定回・端末保持方向・身体遮蔽・端末AGCによるscan全体のずれ
+
+  オフセット除去:
+    r̃_{s,a} = r_{s,a} - median_{j∈O_s} r_{s,j}
+    O_s: そのscanで観測されたAP集合
+
+  AP間差分:
+    d_{s,ij} = r_{s,i} - r_{s,j} = μ_{l,i} - μ_{l,j} + ε_i - ε_j
+    → 共通オフセット δ_s が消える
+
+  距離関数（rawとcenteredの混合）:
+    d² = λΣw(r-μ)² + (1-λ)Σw̃(r̃-μ̃)²
+
+  往路/復路差への効果:
+    方向別モデルを完全分離するよりデータ効率が良い。
+    方向差が「一部APだけの遮蔽」ではなく「scan全体のオフセット」を含む場合に特に有効。
+
+  実装難易度: 低
+
+------
+
+[手法5] Rank-based Fingerprinting（順位ベース）
+
+  概要:
+    RSSI絶対値でなくAPの強度順位を使用。加法オフセットに完全不変。
+
+  距離関数（Spearman footrule）:
+    d_rank(q,l) = Σ_{a∈O_q∩O_l} |rank_q(a) - rank_l(a)|
+
+  APペアの順序一致率:
+    S(q,l) = Σ_{i<j} w_{ij} · 1[sign(r_q,i - r_q,j) = sign(μ_l,i - μ_l,j)] / Σw_{ij}
+
+  RSSIが近いAPペアの順位不安定性対策:
+    w_{ij} = min(1, |μ_i - μ_j| / τ)
+
+  混合距離:
+    d_hybrid = λ·d_RSSI + (1-λ)·d_rank
+
+  実装難易度: 低
+
+------
+
+[手法6] 周波数帯分離 + Multi-Band Fusion
+
+  概要:
+    同一APの異なる周波数帯から独立した距離推定を行い、逆分散重み付けで結合。
+
+  フリス式:
+    ΔL = 20·log₁₀(f/f₀) dB
+    → 2.4GHz vs 6GHz で 20·log₁₀(6000/2400) ≈ 8 dB差
+
+  実測例（AP-C0-3F-01, 地点P1）:
+    2.4GHz (2412): RSSI ≈ -42 dBm
+    5GHz (5220):   RSSI ≈ -55 dBm
+    理論差 = 20·log₁₀(5220/2412) = 6.7 dB
+    実測差 ≈ 13 dB → path-loss exponent > 2 を示唆
+
+  周波数ごとのパラメータ:
+    P₀_{a,b}, α_{a,b}, σ_{a,b} をband別に推定
+
+  周波数ダイバーシティ:
+    各帯域のフェージングパターンが異なるため、結合で距離推定の分散低減。
+
+  実装難易度: 中
+
+------
+
+[手法7] 廊下制約（Corridor Constraint）
+
+  概要:
+    推定位置を既知の廊下パス上に射影する後処理。
+
+  廊下パス（区分線形経路）:
+    Segment 1 (C棟):  (32, 0) → (0, 0)   東西方向
+    Segment 2 (C2棟): (0, 0)  → (0, 56)  南北方向
+    Segment 3 (C3棟): (0, 56) → (28, 56)  東西方向
+
+  限界:
+    角部の最大誤差は廊下方向成分が支配的 → 射影だけでは解決しない。
+    例: P17 (0,0) に対し WCL推定 (-0.10, 11.16) → 射影後 (0, 11.16) → 依然11.16m誤差
+
+  推奨用途: 他手法の後処理として常に適用（0.3-0.5m改善）
+
+  発展形:
+    hard projectionより posterior を corridor graph 上で推定する方が良い。
+    posteriorがL字の二つのbranchに分かれた場合、2D平均は廊下外に出る。
+    graph median / MAP なら回避可能。
+
+  実装難易度: 低
+
+------------------------------------------------------------------------------
+Tier 3: WCL改良（アブレーション基準として有用）
+------------------------------------------------------------------------------
+
+[手法8] Power-domain重み付け
+  w_j = 10^(RSSI_j/10) で線形パワー重み。
+  dB差の恣意的な重みより物理的根拠がある。
+
+[手法9] AP数の増加（L > 3）
+  凸包拡大により推定可能範囲が広がるが、弱APのノイズ増加とのトレードオフ。
+  L=4, 5, 全3F APを比較。
+
+[手法10] AP Blacklisting
+  AP-C0-3F-04（座標 (-1.9, -11.2)、廊下から離れた部屋内設置）を候補から除外。
+  課題テキスト自身がこのAPの配置問題を指摘している。
+
+[手法11] 分散ベース信頼度重み
+  10回測定の分散が大きいAP-band組を下方重み付け:
+    w = w_base / (1 + σ² / σ_ref²)
+  Count が少ない（例: 2/10回のみ検出）APも同様に下方重み付け。
+
+[手法12] Linear-power domain平均
+  RSSI_linear_avg = 10·log₁₀((1/N)·Σ10^(r_i/10))
+  dBm平均より物理的に正確。
+  ただしmultipath positive spikeに弱い場合あり → CVで比較。
+
+  各改良は個別 0.2-0.5m 程度の改善見込み。
+  凸包制約の根本問題は解決しないが、アブレーション基準として有用。
+
+------------------------------------------------------------------------------
+Tier 4: 高度な統計・ML手法
+------------------------------------------------------------------------------
+
+[手法13] Fisher-like AP選択（空間識別性 × 安定性）
+
+  数式:
+    F_a = Var_l(μ_{l,a}) / E_l[σ²_{l,a}]
+    → 地点間でRSSI変動が大きく、同一地点では安定しているAPを選択。
+
+  冗長性排除（mRMR型）:
+    score(a) = I(R_a; L) - β · max_{j∈S} I(R_a; R_j)
+    同一物理APの複数BSSID/bandを重複計上しない。
+
+  注意: 他階のAPは弱いから削除、と決めつけないこと。
+  WCL/trilaterationには向かなくても、位置固有の検出パターンを持つなら
+  fingerprintingには有益。
+
+------
+
+[手法14] Shrinkage Mahalanobis距離
+
+  WKNNのEuclidean距離をMahalanobis距離に置換:
+    d_M² = (r-μ)ᵀ Σ⁻¹ (r-μ)
+
+  48次元に対しサンプル少 → Ledoit-Wolf shrinkage:
+    Σ̂_λ = (1-λ)Σ̂ + λ·diag(Σ̂)
+
+  効果: 変動の大きいAPを自動的に弱くし、冗長な特徴による距離の水増しを防止。
+
+------
+
+[手法15] Partial Least Squares (PLS) Regression
+
+  高次元・高相関のRSSI空間から位置座標との共分散最大方向を抽出。
+    r ≈ T·Pᵀ,  s ≈ T·q
+
+  PCAと異なり位置に関連する方向を優先。59地点の小規模データに適合。
+  用途: PLS → 1D廊下座標 / PLS latent features → WKNN / PLS → GP
+
+------
+
+[手法16] Segment-first, Coordinate-second（階層的推定）
+
+  Step 1: どの廊下セグメント（C/C2/C3）にいるか分類
+    ẑ = argmax_z p(z|r)
+
+  Step 2: セグメント内で1D座標推定
+    ŝ = f_z(r)
+
+  候補モデル: ridge, PLS, SVR, GP（59地点では大規模NNは過学習リスク大）
+  利点: L字の異なるbranch間の catastrophic error をsegment分類で抑制。
+
+------
+
+[手法17] Ordinal Regression
+
+  59地点を59クラス分類にすると、隣の地点を間違えることと50m先を間違えることが
+  同じlossになる。
+
+  代わりに廊下arc-length の順序を利用:
+    P(s > c_k | r) = σ(f_k(r))
+
+  「分類精度」より「距離誤差」が目的なので、ordinal regressionの方が適切。
+
+------
+
+[手法18] WCL残差学習
+
+  s_true = s_WCL + g(r, s_WCL)
+  WCLの系統的バイアスだけをridge/GP等で補正。
+  WCLの大域的情報を保持しつつ、角部の系統誤差を吸収。
+
+------
+
+[手法19] RSSIとCountのjoint fingerprint
+
+  各APについて複合特徴量を構成:
+    φ_{l,a} = [μ_{l,a}, median_{l,a}, σ_{l,a}, q_{l,a}, log(1+C_{l,a})]
+
+  同じ平均RSSIでも、10/10回安定して見えるAPと2/10回だけ強く見えるAPでは
+  位置情報としての意味が異なる。
+
+  距離関数:
+    d(q,l) = Σ_a w_a [(r-μ)²/(σ²+ε) + η(D-q)²]
+
+------
+
+[手法20] Geometry-aware Data Augmentation
+
+  隣接地点間の補間で仮想fingerprint生成:
+    r̃ = (1-λ)r_l + λr_{l+1} + ε
+    s̃ = (1-λ)s_l + λs_{l+1}
+
+  より堅実な方法: GP radio mapからvirtual fingerprintsをサンプリング
+    r̃_a(s) ~ N(μ_a(s), v_a(s) + σ²)
+
+  「データ水増し」ではなく「推定radio mapからの空間補間サンプリング」と説明可能。
+
+------------------------------------------------------------------------------
+Tier 5: 時系列利用（報告時に注意必要）
+------------------------------------------------------------------------------
+
+[手法21] Corridor Graph HMM / Viterbi Decoding
+
+  往路・復路の順序付きscanを HMM として定式化。
+
+  観測モデル: p(r_t | L_t = l) ... probabilistic FP or GP likelihood
+  遷移モデル:
+    p(L_t=j | L_{t-1}=i) ∝ exp(-λ · d_G(i,j))  (corridor graph距離)
+
+  Viterbi:
+    L̂_{1:T} = argmax Π_t p(r_t|L_t) · p(L_t|L_{t-1})
+
+  重大な注意:
+    「2mずつ順に進む」という既知情報を遷移に直接入れると、
+    RSSI以外から正解を事実上与えることになりうる。
+
+  報告時の区分:
+    - static localization: 各scan独立に測位
+    - tracking: 順序のみ利用（速度は未知）
+    - oracle-speed tracking: 2m間隔等の既知情報も利用
+    → RSSIのみを主張するなら、遷移は「隣接点へ移動しやすい」程度に留めるべき。
+
+================================================================================
+4. 推奨実装パイプライン
+================================================================================
+
+  Phase 1: Pre-processing
+    - Raw dataからlinear-power平均で再集計
+    - tutwifi/tutwifi2025を同一AP-bandで統合
+    - Count < 3 のエントリを除外
+    - 3 band群に分類: 2.4G / 5G / 6G
+    - Centered RSSI (median差分) を計算
+
+  Phase 2: Feature Engineering
+    - (AP_Name, band) 単位でfeature構成
+    - 全48AP利用（座標不明APもfingerprint用）
+    - 特徴量: raw RSSI, centered RSSI, 検出率(Count/10), 分散
+    - Fisher score でAP重み付け/選択
+
+  Phase 3: Primary Estimator（候補を比較）
+    A) WKNN (K=1-7, 1/d², Euclidean)
+    B) Probabilistic FP (Student-t + 検出)
+    C) Corridor-GP radio map
+    D) Segment-first + 1D regression
+
+  Phase 4: Post-processing
+    - Corridor graph上へ射影 / posterior推定
+    - WCL残差補正（オプション）
+
+================================================================================
+5. 評価プロトコル（学術的信頼性のために重要）
+================================================================================
+
+5.1 Data Split
+  Protocol A (surveyed-point recognition):
+    往路でDB構築 → 復路でテスト（逆も実施）
+
+  Protocol B (spatial interpolation):
+    Leave-one-location-out、連続3-5地点ブロック除外
+
+5.2 Leakage防止（必須）
+  - 全10測定からの集計値（平均・分散・検出率）は training fold 内のみで計算
+  - ハイパーパラメータ（K, AP数, band重み, GP length scale等）は nested CV で選択
+  - 往路と復路の同一地点データを train/test に混ぜない
+
+5.3 報告指標
+  - 平均誤差 (mean L2 error)
+  - 中央値誤差 (median error)
+  - 75th / 90th percentile error
+  - 最大誤差 (max error)
+  - 2m以内率、4m以内率
+  - Bootstrap 95% CI
+  - 手法間比較: paired bootstrap or permutation test
+
+5.4 注意: 同一地点 replicate leakage
+  各地点10回のうち8回をtrain、2回をtestにすると、
+  「未知位置への一般化」ではなく「survey済み位置の再認識」を評価することになる。
+  用途によっては正当だが、明示する必要がある。
+
+================================================================================
+6. 最も勝率の高い推奨構成
+================================================================================
+
+  Centered RSSI + Detection Likelihood + Student-t Fingerprint
+  + Corridor-coordinate GP + Graph-constrained Posterior
+
+  log p(s|q) = Σ_{a,b} β_{a,b} [D · log t_ν(r; μ(s)+δ̂_q, σ(s)) + log p(D|s)] + log p(s)
+  δ̂_q = median_{a,b}[r_{q,a,b} - μ_{a,b}(s)]  （共通オフセット補正）
+
+  この構成で以下を統一的に扱える:
+    - 絶対RSSI
+    - 相対RSSI（共通オフセット補正）
+    - 欠測パターン（検出/非検出）
+    - band差（周波数帯分離）
+    - AP安定性（Fisher score重み）
+    - 廊下geometry（corridor座標系）
+    - 空間補間（GP連続モデル）
+
+  59地点の大学研究としては、大規模black-box MLより説明可能な確率モデルの方が説得力がある。
+
+================================================================================
+7. 参考文献
+================================================================================
+
+  - Youssef and Agrawala, "The Horus Location Determination System"
+    (確率的fingerprinting の代表的手法)
+  - Ferris, Fox and Lawrence, "WiFi-SLAM Using GP Latent Variable Models"
+    (GP radio map)
+  - Bahl and Padmanabhan, "RADAR: An In-Building RF-Based User Location and
+    Tracking System" (fingerprinting の元祖)
+  - Blumenthal et al., IEEE 2007 (WCL の原著)
+  - Bulusu et al., IEEE 2000 (CLA の原著)
+
+================================================================================
+8. 実装に必要なファイル
+================================================================================
+
+  data/dataset/measured_RSSI_C3F.csv      集計RSSI（再集計の検証用）
+  data/dataset/AP_coordinate_C3F.csv      AP座標（13AP、座標既知）
+  data/dataset/location_coordinate_C.csv  測定点座標（59点、ground truth）
+  data/dataset/estimation_result_C3F.csv  ベースライン結果（比較用）
+  data/rawdata/rawdata_C3F-F/*.csv        往路raw data
+  data/rawdata/rawdata_C3F-B/*.csv        復路raw data
