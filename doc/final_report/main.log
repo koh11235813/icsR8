@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.22.0 (TeX Live 2025)  (format=lualatex 2025.12.30)  13 JUL 2026 05:08
+This is LuaHBTeX, Version 1.22.0 (TeX Live 2025)  (format=lualatex 2025.12.30)  13 JUL 2026 23:01
  restricted system commands enabled.
 **main.tex
 (./main.tex
@@ -1083,7 +1083,31 @@ Package luatex.def Info: figures/segment_heatmap.pdf  used on input line 104.
 (luatex.def)             Requested size: 297.04771pt x 206.7692pt.
  [2] [3<./figures/cdf_protocol_a_forward_to_backward.pdf><./figures/cdf_protocol
 _a_backward_to_forward.pdf><./figures/cdf_lolo.pdf><./figures/segment_heatmap.pd
-f>] [4] (./main.aux)
+f>] [4]
+LaTeX Font Info:    Font shape `JT3/mc/m/it' in size <9> not available
+(Font)              Font shape `JT3/mc/m/n' tried instead on input line 174.
+LaTeX Font Info:    Font shape `JT3/mc/m/n' will be
+(Font)              scaled to size 8.32242pt on input line 174.
+LaTeX Font Info:    Font shape `JY3/mc/m/it' in size <9> not available
+(Font)              Font shape `JY3/mc/m/n' tried instead on input line 174.
+LaTeX Font Info:    Font shape `JY3/mc/m/n' will be
+(Font)              scaled to size 8.32242pt on input line 174.
+(load cache: extra_lmroman6-regular.luc)
+LaTeX Font Info:    Font shape `JT3/mc/m/n' will be
+(Font)              scaled to size 5.54828pt on input line 174.
+(load cache: extra_lmroman5-regular.luc)
+LaTeX Font Info:    Font shape `JT3/mc/m/n' will be
+(Font)              scaled to size 4.62357pt on input line 174.
+(load cache: extra_lmmono8-regular.luc)
+(./tables/tier4_protocol_a.tex) (./tables/tier4_lolo.tex)
+<figures/cdf_lolo_tier4.pdf, id=243, 409.94217pt x 327.8619pt>
+File: figures/cdf_lolo_tier4.pdf Graphic file (type pdf)
+<use figures/cdf_lolo_tier4.pdf>
+Package luatex.def Info: figures/cdf_lolo_tier4.pdf  used on input line 224.
+(luatex.def)             Requested size: 281.68385pt x 225.28442pt.
+ [5
+
+] [6] [7<./figures/cdf_lolo_tier4.pdf>] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
@@ -1091,43 +1115,45 @@ L3 programming layer <2025-12-24>
 )
 
 Here is how much of LuaTeX's memory you used:
- 6856 strings out of 476081
- 305793,552014 words of node,token memory allocated
- 1647 words of node memory still in use:
-   11 hlist, 2 vlist, 5 rule, 2 glue, 4 kern, 1 glyph, 458 attribute, 59 glue_sp
-ec, 54 attribute_list, 1 write, 14 user_defined nodes
-   avail lists: 1:33,2:87748,3:680,4:787,5:453,6:31,7:11210,8:105,9:3756,10:30,1
-1:276
- 29102 multiletter control sequences out of 65536+600000
- 62 fonts using 45121343 bytes
- 119i,12n,112p,2066b,421s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman8-regular.ot
-f></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman10-regular
-.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmmono9-regula
-r.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman9-bold
-.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman9-regul
-ar.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/haranoaji/Haran
-oAjiMincho-Regular.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public
-/lm/lmroman12-bold.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public
-/haranoaji/HaranoAjiGothic-Medium.otf></usr/local/texlive/2025/texmf-dist/fonts/
-type1/public/amsfonts/cm/cmbx9.pfb></usr/local/texlive/2025/texmf-dist/fonts/typ
-e1/public/amsfonts/cmextra/cmex9.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
-ype1/public/amsfonts/cm/cmmi5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
-1/public/amsfonts/cm/cmmi6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
-ublic/amsfonts/cm/cmmi9.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publ
-ic/amsfonts/cm/cmr6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/a
-msfonts/cm/cmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfo
-nts/cm/cmr9.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/
-cm/cmsy5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/
-cmsy6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cms
-y8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.
-pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msam
-10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/m
-sbm10.pfb>
-Output written on main.pdf (4 pages, 378495 bytes).
+ 6902 strings out of 476081
+ 477805,552014 words of node,token memory allocated
+ 1689 words of node memory still in use:
+   11 hlist, 2 vlist, 5 rule, 2 glue, 4 kern, 1 glyph, 478 attribute, 59 glue_sp
+ec, 55 attribute_list, 1 write, 14 user_defined nodes
+   avail lists: 1:34,2:137764,3:726,4:787,5:538,6:35,7:15108,8:105,9:3890,10:36,
+11:276
+ 29133 multiletter control sequences out of 65536+600000
+ 66 fonts using 45637279 bytes
+ 119i,12n,112p,2066b,429s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman6-regular.ot
+f></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman9-italic.o
+tf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman8-regular
+.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman10-regu
+lar.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmmono9-reg
+ular.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman9-b
+old.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/lm/lmroman9-re
+gular.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/public/haranoaji/Ha
+ranoAjiMincho-Regular.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/pub
+lic/lm/lmroman12-bold.otf></usr/local/texlive/2025/texmf-dist/fonts/opentype/pub
+lic/haranoaji/HaranoAjiGothic-Medium.otf></usr/local/texlive/2025/texmf-dist/fon
+ts/type1/public/amsfonts/cm/cmbx9.pfb></usr/local/texlive/2025/texmf-dist/fonts/
+type1/public/amsfonts/cmextra/cmex9.pfb></usr/local/texlive/2025/texmf-dist/font
+s/type1/public/amsfonts/cm/cmmi5.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
+ype1/public/amsfonts/cm/cmmi6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type
+1/public/amsfonts/cm/cmmi9.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
+ublic/amsfonts/cm/cmr6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publi
+c/amsfonts/cm/cmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/am
+sfonts/cm/cmr9.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfon
+ts/cm/cmsy5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/
+cm/cmsy6.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/
+cmsy8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cms
+y9.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/m
+sam10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbol
+s/msbm10.pfb>
+Output written on main.pdf (7 pages, 465086 bytes).
 
-PDF statistics: 336 PDF objects out of 1000 (max. 8388607)
- 122 compressed objects within 2 object streams
+PDF statistics: 416 PDF objects out of 1000 (max. 8388607)
+ 149 compressed objects within 2 object streams
  0 named destinations out of 1000 (max. 131072)
  1 words of extra memory for PDF output out of 10000 (max. 100000000)
 

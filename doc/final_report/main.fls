@@ -202,6 +202,16 @@ INPUT ./figures/cdf_lolo.pdf
 INPUT ./figures/cdf_lolo.pdf
 INPUT ./figures/segment_heatmap.pdf
 INPUT ./figures/segment_heatmap.pdf
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatex-cache/generic/fonts/otl/lmroman6-regular.luc
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatexja/extra_lmroman6-regular.luc
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatex-cache/generic/fonts/otl/lmroman5-regular.luc
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatexja/extra_lmroman5-regular.luc
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatex-cache/generic/fonts/otl/lmmono8-regular.luc
+INPUT /Users/kinoko/Library/texlive/2025/texmf-var/luatexja/extra_lmmono8-regular.luc
+INPUT ./tables/tier4_protocol_a.tex
+INPUT ./tables/tier4_lolo.tex
+INPUT ./figures/cdf_lolo_tier4.pdf
+INPUT ./figures/cdf_lolo_tier4.pdf
 INPUT ./main.aux
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx9.pfb
 INPUT /usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex9.pfb

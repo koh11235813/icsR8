@@ -15,6 +15,7 @@ import re
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,7 @@ except ImportError:  # editable install 未実施でも動くよう src を通�
 REPORT_DIR = ROOT / "doc" / "final_report"
 MAIN_TEX = REPORT_DIR / "main.tex"
 DIAGNOSTICS_CSV = ROOT / "results" / "method_diagnostics.csv"
+TIER4_DIR = ROOT / "results" / "tier4"
 
 # (header, csv-column) — harness の _protocol_a_tex / _lolo_tex と同一順序。
 PROTO_COLS = ["ave", "median", "p90", "max", "within_2m", "delta_vs_wcl"]
@@ -130,6 +132,111 @@ def verify_paths() -> None:
         check(p.exists(), f"main.tex: 参照先が存在しない -> {rel}")
 
 
+def verify_tier4() -> None:
+    """付録 Tier 4 の CSV・表・図と main.tex の整合を検証する（本文検証への加算）。
+
+    protocol_a 18 行 / lolo_ledger 531 行 / lolo_summary 9 行、手法集合の完全一致、
+    delta_vs_{wcl,gp_corridor} 列の存在と有限性、参照手法の自己 delta=0、status 全 ok、
+    main.tex が tier4 表 2 つ・図 1 つを参照していること、tier4_*.tex 断片が CSV から
+    バイト単位で再構成できることを確認する。
+    """
+    from icsr8.harness_tier4 import (  # noqa: PLC0415 - 加算モジュールの局所 import
+        REFERENCE_METHODS,
+        TIER4_METHODS,
+        _lolo_tex,
+        _order_by_lolo,
+        _protocol_tex,
+    )
+
+    n0 = len(failures)
+    proto_csv = TIER4_DIR / "protocol_a.csv"
+    ledger_csv = TIER4_DIR / "lolo_ledger.csv"
+    summary_csv = TIER4_DIR / "lolo_summary.csv"
+    for p in (proto_csv, ledger_csv, summary_csv):
+        if not p.exists():
+            failures.append(f"tier4/{p.name}: CSV が存在しない")
+    if not (proto_csv.exists() and ledger_csv.exists() and summary_csv.exists()):
+        return
+
+    proto = pd.read_csv(proto_csv)
+    ledger = pd.read_csv(ledger_csv)
+    summ = pd.read_csv(summary_csv)
+    expected_methods = set(TIER4_METHODS) | set(REFERENCE_METHODS)  # 7 + 2 = 9
+
+    check(len(proto) == 18, f"tier4 protocol_a.csv: 行数 {len(proto)} != 18")
+    check(len(ledger) == 531, f"tier4 lolo_ledger.csv: 行数 {len(ledger)} != 531")
+    check(len(summ) == 9, f"tier4 lolo_summary.csv: 行数 {len(summ)} != 9")
+
+    check(set(proto["method"]) == expected_methods,
+          f"tier4 protocol_a: 手法集合不一致 -> {sorted(set(proto['method']))}")
+    check(set(summ["method"]) == expected_methods,
+          f"tier4 lolo_summary: 手法集合不一致 -> {sorted(set(summ['method']))}")
+    check(set(ledger["method"]) == expected_methods,
+          f"tier4 lolo_ledger: 手法集合不一致 -> {sorted(set(ledger['method']))}")
+
+    # delta 列の存在・有限性、status 全 ok、参照手法の自己 delta=0。
+    for df, name in ((proto, "protocol_a"), (summ, "lolo_summary")):
+        check((df["status"] == "ok").all(), f"tier4 {name}: status に ok 以外が存在")
+        for ref in REFERENCE_METHODS:
+            col = f"delta_vs_{ref}"
+            if col not in df.columns:
+                failures.append(f"tier4 {name}: {col} 列が無い")
+                continue
+            vals = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=float)
+            check(bool(np.isfinite(vals).all()), f"tier4 {name}: {col} に非有限値")
+            self_delta = df.loc[df["method"] == ref, col].to_numpy(dtype=float)
+            check(bool((self_delta == 0.0).all()),
+                  f"tier4 {name}: 参照 {ref} の自己 delta が 0 でない")
+
+    # codex 最終レビュー反映: 総行数だけでなく method 単位の行数・一意キー・
+    # 有意差判断に使う CI 4 列（*_lo/*_hi）まで契約として固定する。
+    check(bool(proto.groupby("method").size().eq(2).all()),
+          "tier4 protocol_a: method ごとの fold 行数が 2 でない")
+    check(len(proto[["method", "fold"]].drop_duplicates()) == 18,
+          "tier4 protocol_a: (method, fold) キーに重複")
+    check(bool(summ["method"].is_unique), "tier4 lolo_summary: method に重複")
+    check(bool(ledger.groupby("method").size().eq(59).all()),
+          "tier4 lolo_ledger: method ごとの fold 数が 59 でない")
+    check(len(ledger[["method", "held_out"]].drop_duplicates()) == 531,
+          "tier4 lolo_ledger: (method, held_out) キーに重複")
+    for df, name in ((proto, "protocol_a"), (summ, "lolo_summary")):
+        for ref in REFERENCE_METHODS:
+            for suffix in ("_lo", "_hi"):
+                col = f"delta_vs_{ref}{suffix}"
+                if col not in df.columns:
+                    failures.append(f"tier4 {name}: {col} 列が無い")
+                    continue
+                vals = pd.to_numeric(df[col], errors="coerce").to_numpy(dtype=float)
+                check(bool(np.isfinite(vals).all()), f"tier4 {name}: {col} に非有限値")
+                self_ci = df.loc[df["method"] == ref, col].to_numpy(dtype=float)
+                check(bool((self_ci == 0.0).all()),
+                      f"tier4 {name}: 参照 {ref} の自己 CI 境界が 0 でない")
+
+    # main.tex が tier4 表 2 つ・図 1 つを \input / \includegraphics していること。
+    text = MAIN_TEX.read_text(encoding="utf-8")
+    for frag in (r"\input{tables/tier4_protocol_a.tex}",
+                 r"\input{tables/tier4_lolo.tex}"):
+        check(frag in text, f"main.tex: {frag} を \\input していない")
+    check("cdf_lolo_tier4.pdf" in text,
+          "main.tex: figures/cdf_lolo_tier4.pdf を \\includegraphics していない")
+
+    # tier4_*.tex 断片が CSV から（表生成器と同一関数で）バイト再構成できること。
+    present = list(dict.fromkeys(proto["method"].tolist()))
+    order = _order_by_lolo(summ, present)
+    checks = (
+        (_protocol_tex(proto, REFERENCE_METHODS, order), "tier4_protocol_a.tex"),
+        (_lolo_tex(summ, REFERENCE_METHODS, order), "tier4_lolo.tex"),
+    )
+    for expected_tex, fname in checks:
+        got = (REPORT_DIR / "tables" / fname).read_text(encoding="utf-8")
+        check(expected_tex == got, f"{fname}: CSV からの再構成と不一致")
+
+    if len(failures) == n0:
+        print("[verify_report] tier4 OK: protocol_a 18 行 / lolo_ledger 531 行 / "
+              "lolo_summary 9 行、手法集合 9・delta 有限・status ok・"
+              "tier4_*.tex が CSV と一致。")
+
+
 def main() -> int:
     verify_table(ROOT / "results" / "protocol_a.csv",
                  REPORT_DIR / "tables" / "protocol_a.tex", _proto_line)
@@ -137,6 +244,7 @@ def main() -> int:
                  REPORT_DIR / "tables" / "lolo.tex", _lolo_line)
     verify_paths()
     verify_diagnostics()
+    verify_tier4()
 
     if failures:
         print(f"[verify_report] FAIL ({len(failures)} 件)")
