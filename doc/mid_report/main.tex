@@ -1,0 +1,104 @@
+\documentclass[a4paper]{ltjsarticle}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{geometry}
+\geometry{top=12mm,bottom=12mm,left=15mm,right=15mm}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.6em,topsep=1pt}
+\usepackage{titlesec}
+\titleformat{\section}{\small\bfseries}{}{0em}{}[\vspace{-2pt}\hrule\vspace{1pt}]
+\titlespacing{\section}{0pt}{5pt}{2pt}
+\setlength{\parskip}{1pt}
+\setlength{\parindent}{1em}
+\pagestyle{empty}
+\AtBeginDocument{\small}
+
+\begin{document}
+
+\begin{center}
+  {\large\bfseries 屋内 RSSI 位置推定の精度改善に向けた手法提案 — 中間報告}\\[3pt]
+  {\small 情報通信システム論Ⅰ \quad グループ [GROUP\_NAME] \quad [AUTHOR\_NAME] \quad 提出日：2026年7月3日}
+\end{center}
+
+\section{背景と目的}
+
+豊橋技術科学大学の学内 WiFi（tutwifi / tutwifi2025）の RSSI のみを用いた屋内位置推定において，
+ベースライン手法（WCL: 3.57 m，PBL: 4.38 m，CLA: 8.07 m \; 往路平均誤差）を \textbf{2 m 未満}に改善することを目標とする．
+既存手法の根本的問題として，(1) 周波数帯混在による系統的バイアス，
+(2) 選択 AP の凸包内に推定位置が拘束されること，
+(3) WCL 重み関数の物理的根拠の薄さ，の 3 点を特定した．
+
+\section{これまでにやったこと}
+
+公表ベースライン PBL/CLA/WCL を生 RSSI から再計算し，icsR8\_text.txt Table 1 の Ave/Max/Std を
+再現するライブラリ \texttt{icsr8} を実装した（Python，テスト付き）．
+実装を通じて仕様書に未記載の暗黙の前処理（3F AP 限定，C 棟群のみ選択，物理 AP 単位集約，
+tie-break 規則）を特定し，公表値 5 件の tie 事象（P19/P30/P35/P43/P49）を全て再現した．
+さらに，改善手法の体系的調査ノートを整備し（Tier 1〜5，20 手法），本中間報告の提案に活用した．
+
+\section{提案手法}
+
+6/29 の対面ミーティングで確定した方針（廊下単一直線仮定・AP 数制限なし・統計的機械学習路線）
+に基づき，以下の 3 手法を提案する．
+
+\smallskip
+\noindent\textbf{3.1 \; 周波数帯分離 + マルチバンド融合}
+
+フリスの伝達公式より，2.4 GHz と 6 GHz の間には
+$\Delta L = 20\log_{10}(f/f_0) \approx 8\,\mathrm{dB}$
+の伝搬損失差がある（実測でも 2.4 GHz が 5 GHz より強く観測される傾向を確認）．
+これを無視した従来手法は周波数混在による系統誤差を生む．
+本手法では周波数帯ごとに経路損失パラメータ $P_{0,a,b},\,\alpha_{a,b},\,\sigma_{a,b}$ を独立推定し，
+逆分散重み $w_b \propto 1/\hat{\sigma}_b^2$ でバンド融合する．
+周波数ダイバーシティにより個別バンドのフェージング起因の分散を低減できる．
+
+\smallskip
+\noindent\textbf{3.2 \; 廊下座標系 1D fingerprinting（GP radio map + 階層推定）}
+
+廊下は単一直線上にあるという仮定を活用し，2D 座標ではなく廊下 arc-length $s\in[0,S]$ 上で位置推定する．
+まずセグメント分類（C 棟 / C2 棟 / C3 棟）を行い，次にセグメント内で 1D 回帰を行う階層構成とする．
+1D では各 AP-band ごとの RSSI を Matérn-3/2 カーネルの Gaussian Process でモデル化する：
+\[
+  r_{a,b}(s) \sim \mathcal{GP}(m(s),\,k(s,s')), \quad
+  k(s,s') = \sigma_f^2\!\left(1+\frac{\sqrt{3}|s-s'|}{\ell}\right)\exp\!\left(-\frac{\sqrt{3}|s-s'|}{\ell}\right).
+\]
+これにより 2 m 間隔の観測点間の連続補間と不確実性の定量化が可能となり，
+角部（P16–P17 付近）でも C2 棟 AP の出現パターンによって識別できる．
+Euclidean 距離でなく廊下 geodesic 距離を用いることで壁越しの疑似相関を回避する．
+
+\smallskip
+\noindent\textbf{3.3 \; 確率的 fingerprinting（重み最適化 + オフセット補正）}
+
+RSSI の外れ値（人体遮蔽・フェージング）に対して Gaussian より頑健な Student-$t$ 分布を採用し，
+AP 検出/非検出を二項分布でモデル化する（非検出を $-100\,\mathrm{dBm}$ 固定埋めで扱う WCL より統計的に正当）：
+\[
+  \log p(s\mid q) = \sum_{a,b}\beta_{a,b}\bigl[D\cdot\log t_\nu(r;\,\mu(s)+\hat{\delta}_q,\,\sigma(s)) + \log p(D\mid s)\bigr].
+\]
+共通オフセット $\hat{\delta}_q = \mathrm{median}_{a,b}[r_{q,a,b}-\mu_{a,b}(s)]$ を差し引くことで端末 AGC・
+身体遮蔽・保持方向によるスキャン全体のシフトを吸収する（手法 4: Centered RSSI）．
+加えて，10 回測定の分散が大きい AP-band 組に対し $w = w_{\rm base}/(1+\sigma^2/\sigma_{\rm ref}^2)$ で
+下方重み付けを行い，安定 AP を優先する（手法 11: 分散ベース信頼度重み）．
+
+\section{これからやること（スケジュール）}
+
+\begin{itemize}
+  \item W1（〜7/13）: 周波数帯分離パイプライン実装 + WCL アブレーション（帯域混在 vs 分離の定量比較）
+  \item W2（〜7/20）: GP radio map / Student-$t$ fingerprinting 実装
+  \item W3（〜7/24）: 3 手法のクロスバリデーション・結果まとめ・課題発表会スライド作成
+\end{itemize}
+
+評価プロトコル: 往路で DB 構築 → 復路でテスト（往復逆も実施）．
+集計値（平均・分散・検出率）は train fold 内のみで計算し leakage を防止する．
+報告指標は平均誤差・中央値誤差・90th パーセンタイル・2 m 以内率とする．
+
+\section{現時点の課題と対策}
+
+\begin{itemize}
+  \item \textbf{小規模データの過学習}: 59 地点 × 10 回 × 48 AP では大規模 ML/RL は過学習リスクが高い
+        → GP・Student-$t$ FP など説明可能な統計的機械学習で対応
+  \item \textbf{L 字廊下の幾何的問題}: Euclidean 距離では壁越し点の疑似相関が生じる
+        → corridor geodesic 距離（廊下グラフ上の最短路長）で代替
+  \item \textbf{評価リーク防止}: 往路・復路の同一地点データを train/test に混ぜると「再認識」評価になる
+        → 往復完全分離プロトコルで厳格に管理
+\end{itemize}
+
+\end{document}

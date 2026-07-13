@@ -44,6 +44,20 @@ def load_location_coords(path: str | Path) -> pd.DataFrame:
     return df[list(_LOCATION_RENAME.values())]
 
 
+_AP_COORD_ALL_RENAME = {
+    "AP_Name": "ap_name",
+    "floor": "floor",
+    "x": "x",
+    "y": "y",
+}
+
+
+def load_ap_coords_all(path: str | Path) -> pd.DataFrame:
+    df = pd.read_csv(path, encoding="utf-8-sig")
+    df = df.rename(columns=_AP_COORD_ALL_RENAME)
+    return df[list(_AP_COORD_ALL_RENAME.values())]
+
+
 def load_raw_scans(direction: Direction, root: str | Path) -> pd.DataFrame:
     if direction not in _RAW_DIR_BY_DIRECTION:
         raise ValueError(

@@ -1,0 +1,244 @@
+\documentclass[a4paper]{ltjsarticle}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{geometry}
+\geometry{top=12mm,bottom=12mm,left=15mm,right=15mm}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.6em,topsep=1pt}
+\usepackage{titlesec}
+\titleformat{\section}{\small\bfseries}{}{0em}{}[\vspace{-2pt}\hrule\vspace{1pt}]
+\titlespacing{\section}{0pt}{5pt}{2pt}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\setlength{\parskip}{1pt}
+\setlength{\parindent}{1em}
+\pagestyle{plain}
+\AtBeginDocument{\small}
+
+\begin{document}
+
+\begin{center}
+  {\large\bfseries 屋内 RSSI 位置推定の精度改善に向けた手法実装と評価 — 最終報告}\\[3pt]
+  {\small 情報通信システム論Ⅰ \quad グループ [GROUP\_NAME] \quad [AUTHOR\_NAME] \quad 提出日：2026年7月13日}
+\end{center}
+
+\section{概要}
+
+豊橋技術科学大学の学内 WiFi（tutwifi / tutwifi2025）の RSSI のみを用いた屋内位置推定において，
+ベースライン WCL の平均誤差 3.57~m を \textbf{2~m 未満}に改善することを目標とした．
+まず公表ベースライン（PBL/CLA/WCL）を生 RSSI から再現して\textbf{比較基準を凍結}し，
+その上に調査ノートの手法1--12（Tier~1--3，計12手法）を実装した．
+評価は方向間 Protocol~A（測量済み地点の再認識）と Leave-One-Location-Out（LOLO，空間+方向の汎化）の 2 系統で行った．
+結論として，廊下 1D の Gaussian Process（gp\_corridor）が LOLO で平均 \textbf{0.72~m}（中央値 0.50~m，$\leq$2~m 率 90\%）を達成し\textbf{目標をクリア}，
+fingerprinting 系（wknn/centered/studentt/rank）はいずれも WCL を大幅改善した一方，WCL 改良系（Tier~3）の効果は小幅ないし悪化に留まった．
+
+\section{ベースラインと再現}
+
+公表値 PBL~4.38~m / CLA~8.07~m / WCL~3.57~m（往路平均誤差）を生 RSSI から再計算するライブラリ \texttt{icsr8} を実装した．
+仕様書に未記載の暗黙前処理（3F~AP 限定・C 棟群のみ選択・物理 AP 単位集約・tie-break 規則）を特定し，
+公表 Table~1 の Ave/Max/Std を集計量 atol~$\leq$0.05，地点別座標 $1\times10^{-6}$ で再現，公表値中の tie~事象 5 件（P19/P30/P35/P43/P49）も一致させた．
+本表の \texttt{wcl} 列（Protocol~A の backward$\to$forward fold，すなわち往路をテスト）が公表往路値に一致することが確認でき，
+これにより全提案手法を\textbf{同一の凍結ベースライン}に対して相対評価できる．
+
+\section{実装手法}
+
+中間報告 §3.1--3.3 で提案した 3 手法を軸に，調査ノートの手法1--12 を凍結ベースライン上へ実装した．以下 Tier~3$\to$2$\to$1 の順に要点を述べる（括弧内はノートの手法番号）．
+
+\smallskip\noindent\textbf{3.1\; Tier~3：WCL 改良系（手法6--12）}\;
+WCL の重み・入力を差し替えるアブレーション群である．power-domain 重み（手法8: $w_j=10^{r_j/10}$），linear-power 平均（手法12），top-$L$ AP 拡張（手法9），部屋内設置 AP-C0-3F-04 の除外（手法10），10 回測定の分散に基づく信頼度重み（手法11），廊下パスへの射影後処理（手法7），および周波数帯分離とマルチバンド融合（手法6，中間報告§3.1）を含む．いずれも WCL の凸包制約という根本問題は保持したまま，重みと入力の妥当性を測る基準として用いる．帯域別に対数距離減衰モデル $(P_{0,b},\alpha_b)$ を最小二乗フィットし，各帯の WCL を train 地点上で評価して得た位置 MSE の逆数を融合重みとして 2 次元座標 $\hat{\mathbf{x}}_b$ を融合する：
+\[
+  \hat{\mathbf{x}}=\frac{\sum_b w_b\,\hat{\mathbf{x}}_b}{\sum_b w_b},\qquad w_b=1/\max(\mathrm{MSE}_b,\,0.01).
+\]
+帯域別の dB 残差 $\sigma_b$ も診断値として保持するが，同じ dB 誤差でも帯ごとに位置誤差への換算が異なり位置不確かさの代理として不適なため，融合には用いない．
+
+\smallskip\noindent\textbf{3.2\; Tier~2：相対化 fingerprinting（手法4,5）}\;
+scan 全体に乗る共通オフセット（端末 AGC・保持方向・身体遮蔽）を除去して頑健化する centered\_fp（手法4）と，RSSI 絶対値でなく AP 強度順位を用い加法オフセットに不変な rank\_fp（手法5）．混合係数 $\lambda\in[0,1]$ は train 内 5-fold 内部 CV で選択する（forward pool では centered\_fp が $\lambda{=}0.25$，rank\_fp が $\lambda{=}0.75$ を選択）．
+\[
+  \tilde{r}_{s,a}=r_{s,a}-\operatorname*{median}_{j\in O_s} r_{s,j},\qquad
+  d^2=\lambda\sum_a w_a(r-\mu)^2+(1-\lambda)\sum_a \tilde{w}_a(\tilde{r}-\tilde{\mu})^2 .
+\]
+
+\smallskip\noindent\textbf{3.3\; Tier~1：本命 fingerprinting（手法1,2,3+16）}\;
+(i) \textbf{wknn}（手法1）は RSSI ベクトルの逆距離加重 K 近傍で，K と重み方式（uniform/inv/inv\_sq）を forward training pool 上の内部 CV で選ぶ（選択結果 $K{=}5$，weighting=inv\_sq）．
+(ii) \textbf{gp\_corridor}（手法3+16，中間報告§3.2）は廊下 arc-length $s$ 上で AP-band ごとに Matérn-3/2 GP を張り，セグメント分類（C/C2/C3，train accuracy 1.00）→ セグメント内 1D 尤度推定という階層構成をとる．長さ尺度 $\ell\in\{2..32\}$~m，$\sigma_f\in\{2,5,10\}$~dB，$\sigma_n\in\{1,2,3\}$~dB を (AP,band) ごとに周辺尤度でグリッド選択し，102 キー中 82 キーをモデル化した（$\geq 5$ 地点で検出された鍵のみ GP を fit）．
+(iii) \textbf{studentt\_fp}（手法2+4+11，中間報告§3.3）は外れ値に頑健な Student-$t$ 尤度に，検出/非検出の Bernoulli 項と共通オフセット補正 $\hat{\delta}_q$（手法4）を組み合わせる．自由度 $\nu\in\{3,5,10\}$ は内部 CV で選ぶ（forward pool では $\nu{=}3$ を選択）．
+\begin{align*}
+  k(s,s')&=\sigma_f^2\Bigl(1+\tfrac{\sqrt{3}\,|s-s'|}{\ell}\Bigr)\exp\Bigl(-\tfrac{\sqrt{3}\,|s-s'|}{\ell}\Bigr),\\
+  \log p(s\mid q)&=\sum_{a,b}\Bigl[\beta_{a,b}\,D_{a,b}\,E_{s,a,b}\,\log t_\nu\bigl(r;\,\mu(s)+\hat{\delta}_q,\,\sigma(s)\bigr)+\log p(D_{a,b}\mid s)\Bigr],\quad
+  \hat{\delta}_q=\operatorname*{median}_{(a,b):\,D_{a,b}E_{s,a,b}=1}\bigl[r_{q,a,b}-\mu_{a,b}(s)\bigr].
+\end{align*}
+$E_{s,a,b}=\mathbb{1}[n_{\mathrm{detect}}(s,a,b)\geq 3]$ は学習側の検出回数が下限を満たす鍵の適格性指示子で，t 項と $\hat{\delta}_q$ の中央値は $D_{a,b}E_{s,a,b}=1$ を満たす鍵のみを定義域とする．
+ここで $\beta_{a,b}$ は RSSI 尤度項のみに掛かる（中間報告式からの意図的な修正．理由は§6(e)）．
+
+\section{評価プロトコル}
+
+\textbf{Protocol~A}（2 fold）は往路で DB を構築し復路でテスト，およびその逆を行う．同一 59 地点が train/test 双方に現れるため，本質は\textbf{測量済み地点の再認識}である．
+\textbf{LOLO}（59 fold）は train を往路から保持地点を除いた集合，test を\emph{復路}の当該地点とする（train=forward minus held-out location, test=backward at that location）．未測量地点かつ方向も異なるため，空間汎化と方向汎化を同時に問う\textbf{決定的テスト}である．
+\textbf{リーク対策}：\texttt{fit} には train scan と train 地点の座標のみを渡す（分割 iterator で構造的に除外し，held-out 地点が train に混入しないことを spy テスト \texttt{test\_iter\_lolo\_leakage\_contract\_spy} で検証済み）．集計量は地点別誤差から求める．ハイパーパラメータのうち $K$（wknn），$\lambda$（centered/rank），$\nu$（Student-t）は train 内 5-fold inner-CV で選択し，GP カーネルハイパーパラメータ（$\ell,\sigma_f,\sigma_n$）は train のみに基づく周辺尤度（LML）グリッド選択で決める（inner-CV は用いない）．評価は地点別誤差上の paired bootstrap（$B{=}1000$, seed=0）で 95\% CI を付し，WCL との差（delta）にも CI を付す．
+
+\section{結果}
+
+Protocol~A（表\ref{tab:pa}）と LOLO（表\ref{tab:lolo}）の全手法要約を示す（数値は表生成器の \%.2f 出力を直接 \texttt{\textbackslash input}）．
+誤差 CDF（図\ref{fig:cdf_pa}，\ref{fig:cdf_lolo_heat} 左）とセグメント別平均誤差ヒートマップ（図\ref{fig:cdf_lolo_heat} 右）を併せて示す．
+
+\begin{table}[t]\centering\footnotesize
+\caption{Protocol~A（両方向 2 fold）の手法別誤差 [m] と WCL との差．行は LOLO ave 昇順．}
+\label{tab:pa}
+\input{tables/protocol_a.tex}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{LOLO（59 fold）の手法別誤差 [m]．空間+方向汎化の決定的テスト．}
+\label{tab:lolo}
+\input{tables/lolo.tex}
+\end{table}
+
+\begin{figure}[t]\centering
+  \includegraphics[width=0.5\linewidth]{figures/cdf_protocol_a_forward_to_backward.pdf}\hfill
+  \includegraphics[width=0.5\linewidth]{figures/cdf_protocol_a_backward_to_forward.pdf}
+  \caption{Protocol~A 誤差 CDF（左：forward$\to$backward，右：backward$\to$forward）．}
+  \label{fig:cdf_pa}
+\end{figure}
+
+\begin{figure}[t]\centering
+  \includegraphics[width=0.40\linewidth]{figures/cdf_lolo.pdf}\hfill
+  \includegraphics[width=0.58\linewidth]{figures/segment_heatmap.pdf}
+  \caption{左：LOLO 誤差 CDF．右：(手法$\times$廊下セグメント) 別の平均誤差 [m]（LOLO ledger）．}
+  \label{fig:cdf_lolo_heat}
+\end{figure}
+
+\noindent 要点：
+\begin{itemize}
+  \item \textbf{gp\_corridor}：LOLO で Ave~0.72~m，中央値~0.50~m，P90~1.74~m，$\leq$2~m 率~90\% と\textbf{目標を達成}．Protocol~A では WCL との差が $-2.61$~m（95\%~CI $[-3.27,-1.94]$，fold~forward$\to$backward）で\textbf{統計的に有意}．
+  \item \textbf{Tier~1/2 fingerprinting 系}（LOLO ave）：wknn~2.07 / centered\_fp~2.08 / studentt\_fp~2.32 / rank\_fp~2.70．いずれも WCL~3.51 を大幅に改善．
+  \item \textbf{WCL 改良系（Tier~3，LOLO ave）}は小幅：廊下射影~3.31（改善），linpower~3.36（微改善），top-$L$~3.52（同等），blacklist~3.77・varweight~4.04・multiband~3.82（\textbf{悪化}）．凸包制約を保持したままの重み調整では 2~m を切れないことが確認された．
+\end{itemize}
+
+\section{考察}
+
+\noindent\textbf{(a) Protocol~A の位置づけ．}\;
+Protocol~A は同一 59 地点を train/test 双方に含むため，測っているのは\textbf{測量済み地点の再認識}であって空間汎化ではない．
+実運用で問われる未知地点への一般化を保証するのは LOLO であり，本研究では LOLO を\textbf{決定的テスト}とみなす．Protocol~A の数値は上限性能の目安として補助的に読むべきである．
+
+\noindent\textbf{(b) LOLO $<$ Protocol~A の一見逆転．}\;
+gp\_corridor は LOLO（0.72）が Protocol~A の fold 平均（1.01）より\emph{良い}．これは通常と逆であり注意を要する．
+仮説として，Protocol~A では同方向の往復差（身体遮蔽・保持方向による方向依存オフセット）に GP が過適合し得るのに対し，LOLO では保持地点を除いた近傍からの平滑補間が結果的に復路クエリへよく整合する，という機構を提示する（\textbf{断定はしない}）．
+なお，分割 iterator による構造的除外という既知の経路は，spy テスト（held-out 地点が \texttt{fit} に渡らないことを検証）とコードレビューによる監査で検出されなかった．この逆転をリークで説明する根拠はない．
+
+\noindent\textbf{(c) 負の結果の解釈（仮説，未検証）．}\;
+以下はいずれも観測結果に対する\textbf{仮説}であり，対象アブレーションによる検証は未実施である．blacklist の悪化は\textbf{情報源の喪失}という仮説で説明できる：廊下外の AP-C0-3F-04 も位置固有の検出パターンを持ち，除外は識別情報を捨てる．
+varweight の悪化は $n{=}10$ の per-query 分散推定がノイジーで重みがかえって不安定になるという仮説による．
+multiband の悪化は帯域分割により per-band の有効 AP 数が枯渇し各バンド単体の WCL が劣化するという仮説による．
+いずれも確定的な原因特定には的を絞ったアブレーション（例：AP-C0-3F-04 を戻した blacklist の再実行）が必要である．
+
+\noindent\textbf{(d) wcl\_powerdomain $\equiv$ WCL．}\;
+重み $w_j=10^{r_j/10}$ は重心の正規化で定数因子が消えるため WCL と\textbf{数学的に同値}である．
+実装でも重み正規化は rtol/atol~$1\times10^{-14}$ で一致し，推定座標の差は $<1\times10^{-9}$~m（テスト保証），Protocol~A の delta も浮動小数点精度で 0（$|\Delta|\lesssim10^{-14}$~m）である．
+両表とも該当行に短剣符 †（脚注「mathematically $\equiv$ WCL」）を付している．
+
+\noindent\textbf{(e) studentt\_fp の $\beta$ の位置．}\;
+中間報告§3.3 の式では $\beta_{a,b}$ が検出項を含む括弧全体に掛かっていたが，実装では $\beta_{a,b}$ を\textbf{RSSI 尤度項のみ}に掛ける形へ意図的に修正した．
+検出項は count（Bernoulli）に基づく証拠であり，RSSI の分散に由来する信頼度重みとは単位が異なるため，両者を同一係数で混ぜないための処置である．
+
+\section{制約と今後}
+
+\begin{itemize}
+  \item \textbf{未実装領域}：Tier~4/5（Mahalanobis 距離・PLS 回帰・HMM/Viterbi 等，手法13--21）は本報告では未実装．時系列（順序）情報の利用は「RSSI のみ」の主張と整合させるため慎重を要する．
+  \item \textbf{打ち切り観測の代替}：非検出尤度 $P(R<T_b)$ は帯域別しきい値 $T_b$ が復元不能なため，Bernoulli 検出モデルで代替した．
+  \item \textbf{追加データ}：C4F 系の追加データ（dataset\_r0701）は本報告では未評価であり，今後の外部妥当性検証の対象とする．
+  \item \textbf{データ規模}：59 地点 $\times$ 2 方向という小規模データであり，大規模 ML より説明可能な統計モデルを採ったのは過学習回避のためでもある．結論の一般化には規模拡大が望ましい．
+\end{itemize}
+
+\section{再現手順}
+
+\begin{enumerate}
+  \item \texttt{uv sync} で依存を解決．
+  \item \texttt{uv run pytest}（227 テスト，$\geq$218）が全て通ることを確認．
+  \item \texttt{uv run python scripts/run\_all\_methods.py} で CSV・図・TeX 断片を再生成．
+  \item \texttt{uv run python scripts/dump\_method\_diagnostics.py} で \texttt{results/method\_diagnostics.csv}（\S3 引用値の根拠）を再生成．
+  \item \texttt{(cd doc/final\_report \&\& latexmk -lualatex main.tex)} で本 PDF をビルド．
+  \item リポジトリルートで \texttt{uv run python scripts/verify\_report.py} を実行し，表数値・診断値・参照パスの整合を検証．
+\end{enumerate}
+
+\clearpage
+\appendix
+
+\section{Tier 4 手法の追補評価}
+
+本付録は本文\textbf{凍結後の追補}であり，本文「制約と今後」で Tier~4/5 を未実装とした記述は\textbf{本付録により更新される}：Tier~4 の 7 手法（手法13--15,17--20）を凍結ベースライン上へ実装・評価した（Tier~5 の時系列手法21 は「RSSI のみ」の主張との整合上，引き続き未実装）．
+なお手法16（segment-first）は独立手法ではなく，本文§3.3 の gp\_corridor の\textbf{内部段}（セグメント分類 C/C2/C3 $\to$ セグメント内 1D 推定）として\textbf{実装済み}であり，本付録では単独評価しない（本文の「手法3+16」表記の明確化であって修正ではない）．
+評価プロトコル・分割・ブートストラップは本文と\textbf{完全に同一}で，結果は本文成果物と別系統へ隔離してある（CSV は \texttt{results/tier4/}，表・図は既存ディレクトリ内の \texttt{tier4\_*} 固有名：\texttt{tables/tier4\_*.tex}・\texttt{figures/cdf\_lolo\_tier4.pdf}）．
+
+\smallskip\noindent\textbf{A.1\; 手法}\;
+7 手法はいずれも地点別 (ap\_name, band) 統計を特徴の基礎とするが，実際に消費する統計は手法ごとに異なる（fisher\_wknn: $\mu/\sigma$；mahalanobis\_wknn: $\mu$＋スキャン残差共分散；pls\_corridor / ordinal\_corridor: $\mu$ のみ；wcl\_residual: $\mu$＋WCL 弧長 $s_{\mathrm{wcl}}$；joint\_fp: $\mu/\sigma/\hat q$；gp\_augmented\_wknn: $\mu/\hat q$）．ハイパーパラメータは train 内 5-fold inner-CV（seed=0，本文 wknn 等と同一契約）で選ぶ．弧長系の pls/ordinal/wcl\_residual/gp\_augmented は train 地点座標を廊下弧長 $s$ への変換に用い，wcl\_residual はさらに WCL 弧長そのものを特徴に含む（AP 座標も使う唯一の手法）；他は AP 座標を使わない純指紋系である．いずれもリーク除外は本文と同一の分割 iterator 契約で保証する．
+
+\smallskip\noindent\textit{fisher\_wknn}（手法13）\;鍵 $k$ ごとに地点間分散/地点内分散の比 Fisher score を計算し，上位 $M$ 鍵に絞った特徴空間で通常の WKNN を行う．分子・分母とも $\sigma$ が有限（検出地点数 $\geq 3$）な地点集合で評価する（母集団の不一致を避ける）．$M\in\{8,16,24,32,48,\text{all}\}$，$k\in\{3,5\}$，weighting $\in\{$inv,inv\_sq$\}$．
+\[
+  F_k=\frac{\operatorname{Var}_l(\mu_{l,k})}{\operatorname{mean}_l(\sigma_{l,k}^2)}\quad(\sigma\text{ 有限地点のみ}).
+\]
+
+\smallskip\noindent\textit{mahalanobis\_wknn}（手法14）\;WKNN の L2 距離を Mahalanobis 距離へ置換する．採択された \texttt{within} モードは，地点等重みの残差外積平均 $\bar S$ に Ledoit--Wolf の\textbf{縮小係数 $\lambda$ のみ}（スキャン残差から算出）を借りて縮小する（生の標本共分散は地点数 $\leq$ 特徴次元で特異なため）．全 fold で \texttt{within} を選択した．
+\[
+  \bar S=\frac1L\sum_{l}\frac1{n_l}\sum_i(r_i-\mu_l)(r_i-\mu_l)^\top,\quad
+  \hat\Sigma=(1-\lambda)\bar S+\lambda\tfrac{\operatorname{tr}\bar S}{p}I,\quad
+  d^2=(r-\mu)^\top\hat\Sigma^{-1}(r-\mu).
+\]
+
+\smallskip\noindent\textit{pls\_corridor}（手法15）\;標準化した $\mu$ 行列を廊下弧長 $s=\texttt{xy\_to\_arclength}(x,y)$ へ PLS 回帰する（$r\approx TP^\top,\ s\approx Tq$）．廊下が 1 次元多様体であることを用い，高共線な高次元特徴を少数潜在成分に圧縮して 1 スカラー $s$ を予測する．潜在成分数 $\in\{2,3,4,6,8,10\}$．
+
+\smallskip\noindent\textit{ordinal\_corridor}（手法17）\;train 弧長 $s$ の分位点を閾値 $c_1<\dots<c_m$（水準 $k/(m{+}1)$）とし，各閾値で二値ロジット $P(s>c_k\mid r)=\sigma(f_k(z))$ を独立 fit，isotonic 回帰で非増加へ射影後，生存関数の階段積分で期待弧長を再構成する．$m\in\{8,12\}$，$C\in\{0.1,1,10\}$．
+\[
+  \hat s=s_{\min}+\sum_{k=0}^{m}p_k\,(c_{k+1}-c_k),\qquad p_0:=1,\ c_0:=s_{\min},\ c_{m+1}:=s_{\max}.
+\]
+
+\smallskip\noindent\textit{wcl\_residual}（手法18）\;baseline WCL の弧長推定 $s_{\mathrm{wcl}}$ を，$[$標準化 $\mu$ 行列$,\ s_{\mathrm{wcl}}]$ を特徴とする Ridge 回帰の残差 $g(\cdot)$ で補正する：$\hat s=\operatorname{clip}(s_{\mathrm{wcl}}+g(\cdot))$，目標は $s_{\text{true}}-s_{\mathrm{wcl}}$（WCL が説明できない誤差のみを学習）．$\alpha\in\{0.1,1,10,100\}$．
+
+\smallskip\noindent\textit{joint\_fp}（手法19）\;RSSI 残差項に検出率の複合項を足した距離を用いる．検出率は $\hat d=(n_{\text{detect}}{+}1)/(n_{\text{scan}}{+}2)$（Beta$(1,1)$ 平滑化）．\textbf{全 train 鍵}で和を取り，未検出 $r/\mu$ は NON\_DETECT，未適格 $\sigma$ は SIGMA\_MIN で埋める（共通検出鍵のみに絞る旧実装は遠方地点の偶然一致で破綻したため）．$\eta\in\{0,0.5,1,2,4\}$，$k\in\{3,5\}$．
+\[
+  d(q,l)=\frac1{|K|}\sum_{k\in K}\frac{(r_k-\mu_{l,k})^2}{\sigma_{l,k}^2+\varepsilon}
+         +\frac{\eta}{|K|}\sum_{k\in K}(\hat d_k-\hat q_{l,k})^2.
+\]
+
+\smallskip\noindent\textit{gp\_augmented\_wknn}（手法20）\;各鍵の RSSI を弧長 $s$ の 1D GP でモデル化し（gp\_corridor の GP 部品を再利用），間隔 $\Delta$ の $s$ グリッド上に仮想参照点 $\mu_k(s)$ を合成する．検出率 $\hat q(s)<0.5$ の領域は NON\_DETECT へゲートし（検出フットプリント外の外挿を抑止），実測点＋仮想点の合同集合へ WKNN，仮想点の重みを $w_{\text{virt}}$ で減衰する．inner-CV は $(\Delta,w_{\text{virt}},k)$ のみを順位付けする前処理なので\textbf{縮小 GP グリッド}（単一中スケール config）で安価に回し，最終 radio map のみ全グリッドで fit する．$\Delta\in\{2,4\}$，$w_{\text{virt}}\in\{0.25,0.5,1\}$，$k\in\{5,7\}$．
+
+\smallskip\noindent\textbf{A.2\; 実験}\;
+本文と\textbf{同一}のプロトコル（Protocol~A 2 fold ＋ LOLO 59 fold，分割 iterator による構造的リーク除外の spy 契約，地点別誤差上の paired bootstrap $B{=}1000$, seed=0，95\% CI）で 7 手法＋参照 2 手法（wcl, gp\_corridor）を評価した．
+\textbf{主要比較は各手法 vs gp\_corridor（本文で目標を達成した手法）を事前指定}し，vs WCL を含むその他は\textbf{探索的}とする．多重比較補正は行わず，探索的比較として読む（A.5）．
+
+\smallskip\noindent\textbf{A.3\; 結果}\;
+Protocol~A を表\ref{tab:tier4_pa}，LOLO を表\ref{tab:tier4_lolo}，LOLO 誤差 CDF を図\ref{fig:tier4_cdf}に示す（数値は表生成器の \%.2f 出力を直接 \texttt{\textbackslash input}）．
+
+\begin{table}[t]\centering\footnotesize
+\setlength{\tabcolsep}{3.2pt}
+\caption{Tier~4：Protocol~A（両方向 2 fold）の手法別誤差 [m]．$\Delta$wcl / $\Delta$gp\_corridor は各参照との差（負ほど良い）．行は LOLO ave 昇順．$^{\ast}$ は主要比較基準 gp\_corridor．}
+\label{tab:tier4_pa}
+\input{tables/tier4_protocol_a.tex}
+\end{table}
+
+\begin{table}[t]\centering\small
+\caption{Tier~4：LOLO（59 fold）の手法別誤差 [m] と参照との差．空間+方向汎化の決定的テスト．行は ave 昇順．}
+\label{tab:tier4_lolo}
+\input{tables/tier4_lolo.tex}
+\end{table}
+
+\begin{figure}[t]\centering
+  \includegraphics[width=0.55\linewidth]{figures/cdf_lolo_tier4.pdf}
+  \caption{Tier~4：9 手法（7 Tier4 ＋ 参照 wcl/gp\_corridor）の LOLO 誤差 CDF．}
+  \label{fig:tier4_cdf}
+\end{figure}
+
+\smallskip\noindent\textbf{A.4\; 考察}\;
+\textbf{主要比較（vs gp\_corridor）では 7 手法すべてが有意に劣る}：LOLO の $\Delta$gp\_corridor はいずれも 95\% CI 下限が正で（mahalanobis~$1.04$ $[0.69,1.38]$ / gp\_augmented~$1.15$ $[0.83,1.47]$ / joint\_fp~$1.37$ $[0.95,1.79]$ / fisher~$1.40$ $[0.98,1.80]$，以下 wcl\_residual~$2.52$・pls~$3.07$・ordinal~$3.88$），gp\_corridor 超えは達成できなかった．
+一方 \textbf{WKNN 系 4 手法は vs WCL で有意改善}し 2~m 前後に収まる：mahalanobis~$1.77$（$\Delta$wcl $-1.75$~m，95\%~CI $[-2.49,-1.01]$）/ gp\_augmented~$1.87$（$-1.64$，$[-2.39,-0.84]$）/ joint\_fp~$2.09$（$-1.42$，$[-2.18,-0.61]$）/ fisher~$2.12$（$-1.39$，$[-2.09,-0.65]$）．
+\textbf{wcl\_residual}（$\Delta$wcl $-0.27$，$[-1.07,0.52]$）と \textbf{pls}（$0.28$，$[-0.65,1.19]$）は WCL と\textbf{有意差なし}，\textbf{ordinal}（$1.09$，$[0.26,1.88]$）は\textbf{有意に悪化}した．
+悪化・非有意の機構は以下の\textbf{仮説（未検証）}である：ordinal は 59 標本（inner-CV fold ではさらに少数）で閾値ごとの二値ロジットが不安定になり分位点閾値の識別が揺れる；pls は高共線・小標本で位置関連の潜在成分方向が定まりにくい；wcl\_residual は WCL の凸包バイアスを弧長残差だけでは吸収しきれない．いずれも確定には的を絞ったアブレーションを要する．
+
+\smallskip\noindent\textbf{A.5\; Limitations}\;
+\begin{itemize}
+  \item \textbf{fisher の MI 項省略}：mRMR の相互情報量項は，59 地点では MI 推定の分散が過大で選択をかえって不安定化するため省き，単変量 Fisher 比のみで鍵選択した．
+  \item \textbf{手法20 の GP 利用範囲}：仮想点には GP 事後\textbf{平均のみ}を用い，事後分散からのサンプリング（$\tilde r_a(s)\sim\mathcal N(\mu_a(s),v_a(s)+\sigma^2)$）は不採用．
+  \item \textbf{joint\_fp の $\eta$ 境界解}：Protocol~A では両 fold ともグリッド上限 $\eta{=}4.0$ を選択する境界解であり，検出項 $(\hat d-\hat q)^2$ の寄与が RSSI 項に比して弱いことを示唆する（LOLO では fold により $\eta\in\{0,2,4\}$ が混在）．
+  \item \textbf{記述的 CI}：地点 bootstrap は地点間の空間相関を無視した地点独立仮定下の\textbf{記述的 CI}である．
+  \item \textbf{多重比較}：主要比較以外は探索的で多重比較補正を行っておらず，有意性は探索的に解釈すべきである．
+\end{itemize}
+
+\end{document}
