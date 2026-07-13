@@ -1,0 +1,37 @@
+\begin{tabular}{llrrrrrr}
+\toprule
+Method & Fold & Ave & Median & P90 & Max & Within 2m & $\Delta$WCL \\
+\midrule
+gp\_corridor & backward\_to\_forward & 1.12 & 0.89 & 2.44 & 4.76 & 0.81 & -2.45 \\
+gp\_corridor & forward\_to\_backward & 0.90 & 0.66 & 2.32 & 4.17 & 0.88 & -2.61 \\
+wknn & backward\_to\_forward & 1.48 & 1.42 & 2.94 & 7.25 & 0.76 & -2.09 \\
+wknn & forward\_to\_backward & 1.65 & 1.59 & 3.86 & 8.83 & 0.73 & -1.87 \\
+centered\_fp & backward\_to\_forward & 1.39 & 1.43 & 2.70 & 5.97 & 0.75 & -2.17 \\
+centered\_fp & forward\_to\_backward & 1.37 & 0.80 & 3.94 & 6.72 & 0.81 & -2.14 \\
+studentt\_fp & backward\_to\_forward & 1.09 & 1.04 & 2.37 & 4.69 & 0.85 & -2.48 \\
+studentt\_fp & forward\_to\_backward & 1.18 & 0.36 & 2.91 & 7.80 & 0.83 & -2.34 \\
+rank\_fp & backward\_to\_forward & 1.64 & 0.67 & 2.79 & 19.24 & 0.80 & -1.92 \\
+rank\_fp & forward\_to\_backward & 1.37 & 0.46 & 2.02 & 31.63 & 0.88 & -2.15 \\
+wcl\_corridor & backward\_to\_forward & 3.32 & 3.09 & 6.44 & 11.81 & 0.39 & -0.25 \\
+wcl\_corridor & forward\_to\_backward & 3.31 & 2.77 & 6.00 & 12.15 & 0.41 & -0.20 \\
+wcl\_linpower & backward\_to\_forward & 3.52 & 2.94 & 6.60 & 12.11 & 0.34 & -0.05 \\
+wcl\_linpower & forward\_to\_backward & 3.36 & 2.82 & 6.07 & 11.66 & 0.36 & -0.15 \\
+wcl\_powerdomain$^\dagger$ & backward\_to\_forward & 3.57 & 3.22 & 6.48 & 11.85 & 0.32 & -0.00 \\
+wcl\_powerdomain$^\dagger$ & forward\_to\_backward & 3.51 & 2.81 & 6.09 & 12.17 & 0.31 & -0.00 \\
+wcl & backward\_to\_forward & 3.57 & 3.22 & 6.48 & 11.85 & 0.32 & 0.00 \\
+wcl & forward\_to\_backward & 3.51 & 2.81 & 6.09 & 12.17 & 0.31 & 0.00 \\
+wcl\_topl & backward\_to\_forward & 3.60 & 3.23 & 6.38 & 11.91 & 0.32 & 0.03 \\
+wcl\_topl & forward\_to\_backward & 3.51 & 2.81 & 6.09 & 12.17 & 0.31 & 0.00 \\
+wcl\_blacklist & backward\_to\_forward & 3.75 & 3.22 & 6.95 & 12.49 & 0.32 & 0.18 \\
+wcl\_blacklist & forward\_to\_backward & 3.77 & 2.87 & 7.32 & 13.22 & 0.31 & 0.26 \\
+multiband\_wcl & backward\_to\_forward & 3.72 & 3.21 & 7.37 & 12.99 & 0.31 & 0.15 \\
+multiband\_wcl & forward\_to\_backward & 3.81 & 3.47 & 6.43 & 11.08 & 0.20 & 0.30 \\
+wcl\_varweight & backward\_to\_forward & 4.35 & 3.83 & 8.22 & 12.01 & 0.25 & 0.79 \\
+wcl\_varweight & forward\_to\_backward & 4.04 & 3.33 & 7.60 & 14.06 & 0.32 & 0.53 \\
+pbl & backward\_to\_forward & 4.38 & 3.74 & 8.36 & 13.64 & 0.24 & 0.81 \\
+pbl & forward\_to\_backward & 4.52 & 3.67 & 7.98 & 15.63 & 0.24 & 1.01 \\
+cla & backward\_to\_forward & 8.07 & 6.94 & 14.88 & 24.17 & 0.08 & 4.50 \\
+cla & forward\_to\_backward & 7.02 & 6.53 & 12.41 & 18.00 & 0.12 & 3.51 \\
+\bottomrule
+\end{tabular}
+\par\footnotesize $^\dagger$ wcl\_powerdomain mathematically $\equiv$ WCL.

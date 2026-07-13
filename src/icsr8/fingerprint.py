@@ -17,7 +17,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+import numpy as np
 import pandas as pd
+
+from icsr8.constants import BAND_BOUNDARIES_MHZ
 
 DEFAULT_REPRODUCTION_WINGS: frozenset[str] = frozenset({"C0", "C2", "C3"})
 
@@ -62,3 +65,127 @@ def reproduction_fingerprint(
         kind="stable",
     )
     return ordered.drop_duplicates(subset=["location_p", "ap_name"]).reset_index(drop=True)
+
+
+def band_of(frequency_mhz: int) -> str:
+    for band, (low, high) in BAND_BOUNDARIES_MHZ.items():
+        if low <= frequency_mhz <= high:
+            return band
+    raise ValueError(f"frequency {frequency_mhz} MHz is outside all known bands")
+
+
+def detailed_fingerprint(
+    scans: pd.DataFrame,
+    ap_coords: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    work = scans.assign(_linear=np.power(10.0, scans["rssi"] / 10.0))
+    grouped = work.groupby(
+        ["location_p", "ap_name", "ssid", "frequency"], as_index=False
+    ).agg(
+        n_detect=("rssi", "size"),
+        rssi_median=("rssi", "median"),
+        rssi_mean_db=("rssi", "mean"),
+        rssi_std=("rssi", lambda s: s.std(ddof=0)),
+        _linear_mean=("_linear", "mean"),
+    )
+    grouped["detection_rate"] = grouped["n_detect"] / 10.0
+    grouped["rssi_mean_linear_dbm"] = 10.0 * np.log10(grouped["_linear_mean"])
+    grouped["band"] = grouped["frequency"].map(band_of)
+    grouped = grouped.drop(columns="_linear_mean")
+
+    columns = [
+        "location_p", "ap_name", "ssid", "frequency", "band",
+        "n_detect", "detection_rate", "rssi_median", "rssi_mean_db",
+        "rssi_mean_linear_dbm", "rssi_std",
+    ]
+    if ap_coords is not None:
+        grouped = grouped.merge(
+            ap_coords[["ap_name", "floor", "x", "y"]],
+            on="ap_name",
+            how="left",
+        )
+        columns = columns + ["floor", "x", "y"]
+    return grouped[columns]
+
+
+def ap_band_fingerprint(
+    scans: pd.DataFrame,
+    ap_coords: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """物理 AP × band 単位へ集約した指紋を作る。
+
+    detailed_fingerprint が (location_p, ap_name, ssid, frequency) で分割するのに
+    対し、tutwifi/tutwifi2025 の SSID 違いや同一 band 内のチャネル違いを 1 行へ
+    束ねる。下流の各手法が個別に再集約する必要をなくす。
+    """
+    work = scans.assign(
+        band=scans["frequency"].map(band_of),
+        _linear=np.power(10.0, scans["rssi"] / 10.0),
+    )
+    grouped = work.groupby(
+        ["location_p", "ap_name", "band"], as_index=False
+    ).agg(
+        # Why not size(): 行数はスキャン数ではない。同一 scan (count) 内で同じ
+        #   物理 AP-band が 2 つの SSID から見えることがあり、size() は 2 と数えて
+        #   しまう。distinct な scan index (count) の nunique で 1 回と数える。
+        n_detect=("count", "nunique"),
+        rssi_median=("rssi", "median"),
+        rssi_mean_db=("rssi", "mean"),
+        rssi_std=("rssi", lambda s: s.std(ddof=0)),
+        _linear_mean=("_linear", "mean"),
+    )
+    grouped["detection_rate"] = grouped["n_detect"] / 10.0
+    grouped["rssi_mean_linear_dbm"] = 10.0 * np.log10(grouped["_linear_mean"])
+    grouped = grouped.drop(columns="_linear_mean")
+
+    columns = [
+        "location_p", "ap_name", "band",
+        "n_detect", "detection_rate", "rssi_median", "rssi_mean_db",
+        "rssi_mean_linear_dbm", "rssi_std",
+    ]
+    if ap_coords is not None:
+        grouped = grouped.merge(
+            ap_coords[["ap_name", "floor", "x", "y"]],
+            on="ap_name",
+            how="left",
+        )
+        columns = columns + ["floor", "x", "y"]
+    return grouped[columns]
+
+
+def candidate_aggregate(
+    scans: pd.DataFrame,
+    ap_coords: pd.DataFrame,
+    aggregation: str = "median",
+    *,
+    restrict_to_known_aps: bool = True,
+) -> pd.DataFrame:
+    group_keys = ["location_p", "ap_name", "ssid", "frequency"]
+    if aggregation == "median":
+        grouped = scans.groupby(group_keys, as_index=False).agg(
+            rssi_median=("rssi", "median")
+        )
+    elif aggregation == "dbm_mean":
+        grouped = scans.groupby(group_keys, as_index=False).agg(
+            rssi_median=("rssi", "mean")
+        )
+    elif aggregation == "linear_power":
+        work = scans.assign(_linear=np.power(10.0, scans["rssi"] / 10.0))
+        grouped = work.groupby(group_keys, as_index=False).agg(
+            _linear_mean=("_linear", "mean")
+        )
+        grouped["rssi_median"] = 10.0 * np.log10(grouped["_linear_mean"])
+        grouped = grouped.drop(columns="_linear_mean")
+    else:
+        raise ValueError(f"unknown aggregation: {aggregation!r}")
+
+    join = grouped.merge(
+        ap_coords[["ap_name", "x", "y"]],
+        on="ap_name",
+        how="left" if not restrict_to_known_aps else "inner",
+    )
+
+    # Why not rename rssi_median per aggregation kind: keeping this column name
+    # makes select_top_k/estimators drop-in compatible with any aggregation;
+    # renaming would fork every downstream consumer for no functional gain.
+    return join[["location_p", "ap_name", "ssid", "frequency", "rssi_median", "x", "y"]]
