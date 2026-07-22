@@ -7,4 +7,14 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 MEMO.md
+PLAN.md
 note
+doc/**/main.aux
+doc/**/main.fdb_latexmk
+doc/**/main.fls
+doc/**/main.log
+doc/**/main.synctex.gz
+doc/**/main.nav
+doc/**/main.out
+doc/**/main.snm
+doc/**/main.toc
