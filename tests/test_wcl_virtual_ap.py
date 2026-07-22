@@ -103,6 +103,74 @@ def test_estimate_vwcl_schema_and_determinism():
     pd.testing.assert_frame_equal(out1, out2)
 
 
+def test_converges_beyond_ten_iterations():
+    # 実データ backward の location 10 の top-3 構成（拮抗した2強 + 弱1）。
+    # 収束に 49 回を要し、旧上限 10 では 0.064 m ずれた点を返していた。
+    # 既定上限 100 は完全収束（1000 回）と一致することを固定する。
+    pts = np.array([[9.1, 1.0], [20.8, -1.1], [30.1, 1.0]])
+    w = np.array([12.589254118, 10.0, 1.0])
+    converged = vwcl_point(pts, w, max_iter=1000)
+    default = vwcl_point(pts, w)
+    capped10 = vwcl_point(pts, w, max_iter=10)
+    assert np.allclose(default, converged, atol=1e-8)
+    assert np.hypot(default[0] - capped10[0], default[1] - capped10[1]) > 1e-2
+
+
+def _inside_closed_hull(q: np.ndarray, hull: np.ndarray, eps: float = 1e-9) -> bool:
+    # CCW 凸包の閉包（境界含む）判定：全エッジで cross >= -eps。
+    a = hull
+    b = np.roll(hull, -1, axis=0)
+    edge = b - a
+    rel = q[None, :] - a
+    cross = edge[:, 0] * rel[:, 1] - edge[:, 1] * rel[:, 0]
+    return bool((cross >= -eps).all())
+
+
+def test_contraction_stays_inside_hull():
+    # 継承重みの下では更新は凸結合になり推定は実 AP 凸包（閉包）を出ない
+    # （境界バイアス「補正」ではなく最強 AP への収縮になる）。
+    pts = np.array([[0.0, 0.0], [60.0, 0.0], [30.0, 0.8]])
+    w = np.array([30.0, 1.0, 1.0])
+    hull = _convex_hull(pts)
+    x, y = vwcl_point(pts, w)
+    assert _inside_closed_hull(np.array([x, y]), hull)
+    # この構成では最強 AP の頂点まで完全収縮する。
+    assert np.allclose([x, y], pts[0], atol=1e-6)
+
+
+def test_end_to_end_via_run_method():
+    from icsr8.methods import run_method
+
+    ap_coords = pd.DataFrame(
+        [
+            {"ap_name": "AP-C0-3F-01", "x": 0.0, "y": 0.0},
+            {"ap_name": "AP-C2-3F-01", "x": 10.0, "y": 0.0},
+            {"ap_name": "AP-C3-3F-01", "x": 5.0, "y": 8.0},
+        ]
+    )
+    def _scans(loc: int, rssi_by_ap: dict) -> pd.DataFrame:
+        rows = []
+        for ap, r in rssi_by_ap.items():
+            for jitter in (-1.0, 0.0, 1.0):
+                rows.append(
+                    {"location_p": loc, "ap_name": ap, "ssid": "tutwifi",
+                     "frequency": 2412, "rssi": r + jitter}
+                )
+        return pd.DataFrame(rows)
+
+    train = _scans(1, {"AP-C0-3F-01": -50, "AP-C2-3F-01": -60, "AP-C3-3F-01": -65})
+    test = _scans(2, {"AP-C0-3F-01": -40, "AP-C2-3F-01": -70, "AP-C3-3F-01": -70})
+    location_coords = pd.DataFrame(
+        [{"location_p": 1, "x": 1.0, "y": 1.0}, {"location_p": 2, "x": 2.0, "y": 1.0}]
+    )
+    out1 = run_method("wcl_virtual_ap", train, test, ap_coords, location_coords)
+    out2 = run_method("wcl_virtual_ap", train, test, ap_coords, location_coords)
+    assert list(out1.columns) == ["location_p", "x", "y"]
+    assert out1["location_p"].tolist() == [2]
+    assert np.isfinite(out1[["x", "y"]].to_numpy()).all()
+    pd.testing.assert_frame_equal(out1, out2)
+
+
 def test_registered_and_runs_via_registry():
     from icsr8.methods import REGISTRY
 

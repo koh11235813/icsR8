@@ -234,4 +234,19 @@
   \]
 \end{frame}
 
+\begin{frame}{付録D：文献の境界補正（vWCL）の追試}
+  \small
+  \begin{itemize}
+    \item 文献\cite{ji2012vap}の vWCL（推定位置に対する実 AP の点対称反転で仮想 AP を生成し，実 AP 凸包の外側のみ採用して反復再推定）の機構を，凍結ベースライン（top-3 選択・凍結 WCL 重み）上に適用して追試
+    \item 結果：対 WCL で Protocol A \textbf{両方向とも有意に悪化}
+      \begin{itemize}
+        \item f$\to$b：$\Delta{+}0.62$ m（95\% CI $[0.21, 1.07]$）／ b$\to$f：$\Delta{+}0.81$ m（95\% CI $[0.39, 1.25]$）
+        \item 学習不要手法のため LOLO は f$\to$b と一致（Ave 4.13 m．結果は \texttt{results/extra/} に隔離）
+      \end{itemize}
+    \item 機構（本データの f$\to$b での観測）：補正が作動した 55/59 地点の初期反復で\textbf{最強 AP の反転像のみが棄却}され，推定が最強 AP 側へ収縮．細長い top-3 配置で WCL の空間平均が失われることが悪化機構として観測された
+    \item 注：top-3・凍結重みへの適用結果であり，閾値ベースの原法を全面否定するものではない
+    \item 本追試でも幾何的な後処理は 2 m 目標に届かず，\textbf{廊下 1D 構造を明示的に使う} gp\_corridor の優位と整合する
+  \end{itemize}
+\end{frame}
+
 \end{document}

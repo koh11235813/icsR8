@@ -55,3 +55,4 @@
 - 付録1：Tier 4 の詳細比較（「追補の 7 手法も主要比較で有意に劣後」の根拠表）
 - 付録2：Protocol A の詳細（両方向 fold の数値と CDF）
 - 付録3：代替手法の定義式（Student-t fingerprint・centered fingerprint）
+- 付録4：文献の境界補正 vWCL の追試（凸包対策の文献手法でも有意悪化 Δ+0.62 m — gp_corridor の必然性の傍証。「WCL の改良では駄目なのか」系の質問への回答用）
