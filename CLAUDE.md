@@ -37,50 +37,50 @@ Separate functions into separate files by type, and do not recreate existing fun
 
 # Development
 
-このリポジトリを変更する際の注意点。いずれも実際に事故った・事故りかけた経緯から成文化している（経緯の詳細は docs/adr/）。
+Cautions for changing this repository. Each rule below was codified after an actual (or narrowly avoided) incident; see docs/adr/ for the full history.
 
-## 1. 凍結契約 — 触ってはいけない 6 ファイル
+## 1. Freeze contract — six files you must not touch
 
-`results/{protocol_a,lolo_ledger,lolo_summary}.csv`・`doc/final_report/tables/{lolo,protocol_a}.tex`・`doc/final_report/figures/cdf_lolo.pdf` は本文の凍結成果物。**手編集・無断再生成は禁止**。再生成が必要なときは README「Tier ごとの評価手順」の本文 15 手法明示コマンドのみを使う。パイプラインは決定的（seed=0）なので、正しい再生成は HEAD と byte 一致する — 一致しなければ何かを壊している。
+`results/{protocol_a,lolo_ledger,lolo_summary}.csv`, `doc/final_report/tables/{lolo,protocol_a}.tex`, and `doc/final_report/figures/cdf_lolo.pdf` are the frozen main-body artifacts. **Never hand-edit or casually regenerate them.** When regeneration is genuinely needed, use only the command in README "Tier ごとの評価手順" with the 15 main-body methods listed explicitly. The pipeline is deterministic (seed=0), so a correct regeneration is byte-identical to HEAD — any diff means something is broken.
 
-## 2. `run_all_methods.py` を `--methods` 無しで実行しない
+## 2. Never run `run_all_methods.py` without `--methods`
 
-# 2026-07-14 汚染事故: レジストリは `src/icsr8/methods/` を自動探索するため、`@register` 付きの手法を追加した時点で無指定実行の掃引対象が増える。無指定で実行した結果、Tier 4 の 7 手法が凍結ファイルに混入した。新手法を追加したら、この地雷は**さらに**大きくなっていることを忘れない。
+# 2026-07-14 contamination incident: the registry auto-discovers `src/icsr8/methods/`, so the moment a new method carries `@register`, an unfiltered run sweeps it too. An unfiltered run leaked the seven Tier 4 methods into the frozen files. Every new method you add makes this landmine **bigger** — do not forget it.
 
-## 3. 隔離評価は 3 点セットで
+## 3. Isolated evaluation needs all three output flags
 
-新手法・追試の評価は `run_tier4.py --methods <name> --output <dir> --tables-dir <dir> --figures-dir <dir>` と**出力 3 系統すべて**を専用ディレクトリ（例: `results/extra/`）へ向ける。`--tables-dir`/`--figures-dir` を省略すると既定の `doc/final_report/` 配下に書き、コミット済みの付録 A 表 `tier4_*.tex` を上書きする。
+Evaluate new/experimental methods with `run_tier4.py --methods <name> --output <dir> --tables-dir <dir> --figures-dir <dir>`, pointing **all three output channels** at a dedicated directory (e.g. `results/extra/`). If `--tables-dir`/`--figures-dir` are omitted, the run writes into the default `doc/final_report/` and overwrites the committed Appendix-A tables `tier4_*.tex`.
 
-## 4. 変更後は必ず 2 つのゲートを通す
+## 4. Always pass both gates after a change
 
 ```bash
-uv run pytest                           # 374 テスト（凍結ガード・リーク契約・公表値再現を含む）
-uv run python scripts/verify_report.py  # CSV↔表TeX の byte 照合 + main.tex 参照パス実在検査
+uv run pytest                           # 374 tests (freeze guard, leak contract, published-value reproduction)
+uv run python scripts/verify_report.py  # byte-level CSV↔TeX reconciliation + main.tex reference-path existence
 ```
 
-コード・結果・LaTeX のどれを触った後でも両方実行する。片方だけでは足りない（pytest は文書と表の整合を見ないし、verify_report は挙動を見ない）。
+Run both no matter what you touched — code, results, or LaTeX. One alone is insufficient (pytest does not check document/table consistency; verify_report does not check behavior).
 
-## 5. 手法追加の規約
+## 5. Conventions for adding a method
 
-- 1 module = 1 method（`src/icsr8/methods/<name>.py`）、`@register`、`name` と `uses_geometry` を宣言
-- `fit` に test の情報を渡さない。リーク防止は `run_method`（`methods/__init__.py`）が train 地点への座標フィルタで構造的に保証しており、spy テスト `test_iter_lolo_leakage_contract_spy` が契約を固定している。この保証を迂回する直接呼び出しを書かない
-- 反復アルゴリズムは「収束まで」を契約とし、上限は観測最大の余裕をもって設定して根拠をコメントに残す（# 2026-07-22 vWCL: 論文の想定 5-10 回に対し実データは最大 53 回を要した）
-- 性質テスト＋`run_method` 経由の e2e テストを `tests/test_<name>.py` に追加
+- One module = one method (`src/icsr8/methods/<name>.py`), decorated with `@register`, declaring `name` and `uses_geometry`.
+- Never pass test-side information into `fit`. Leak prevention is structural: `run_method` (`methods/__init__.py`) filters location coordinates to training locations, and the spy test `test_iter_lolo_leakage_contract_spy` pins that contract. Do not write direct calls that bypass this guarantee.
+- For iterative algorithms, the contract is "iterate until converged"; set the cap with generous margin over the observed maximum and leave a dated comment justifying it (# 2026-07-22 vWCL: the paper expects 5–10 iterations, but real data required up to 53).
+- Add property tests plus an end-to-end test through `run_method` in `tests/test_<name>.py`.
 
-## 6. LaTeX の契約
+## 6. LaTeX contracts
 
-- ビルドは LuaLaTeX + latexmk（`doc/*/. latexmkrc`）。報告書は `ltjsarticle[twocolumn]`、スライドは beamer + luatexja。pLaTeX 系クラス（ieicej 等）は混ぜない
-- `doc/final_report/main.tex` 内の `\input{tables/...}` と `\includegraphics{...figures/...}` の**パス文字列は verify_report.py の検査対象**。セクションを再編してもパス文字列は一字も変えない
-- 数値は表生成器の `%.2f` 出力を `\input` するのが原則。本文プロースに数値を書くときは表・CSV と厳密一致させ、独自の丸め直しをしない
+- Builds use LuaLaTeX + latexmk (`doc/*/.latexmkrc`). The report is `ltjsarticle[twocolumn]`; the slides are beamer + luatexja. Do not mix in pLaTeX-family classes (ieicej etc.).
+- The path strings of `\input{tables/...}` and `\includegraphics{...figures/...}` inside `doc/final_report/main.tex` are **inspected by verify_report.py**. Restructure sections freely, but do not change a single character of those path strings.
+- Numbers should be `\input` from the table generator's `%.2f` output. When a number appears in prose, it must match the tables/CSVs exactly — never re-round on your own.
 
-## 7. 公開リポジトリのプレースホルダ
+## 7. Public-repository placeholders
 
-`[GROUP_NAME]` / `[AUTHOR_NAME]` は公開リポジトリ用のプレースホルダ。実名・グループ名を埋めた状態でコミットしない（提出用 PDF はローカルで埋めてビルドする）。
+`[GROUP_NAME]` / `[AUTHOR_NAME]` are placeholders for the public repository. Never commit real names filled in (build the submission PDFs locally with the placeholders replaced).
 
-## 8. 再現性を壊さない
+## 8. Do not break reproducibility
 
-seed=0・bootstrap B=1000・決定的 tie-break（rssi_median 降順 → frequency 昇順 → ssid 昇順 → ap_name 昇順。公表値の tie 事象 P19/P30/P35/P43/P49 を再現する規則）は結果の同一性の根幹。これらを変更する提案は、公表値再現テストが壊れることを意味する。
+seed=0, bootstrap B=1000, and the deterministic tie-break (rssi_median desc → frequency asc → ssid asc → ap_name asc; the rule that reproduces the five published tie events P19/P30/P35/P43/P49) are the foundation of result identity. Any proposal to change them means the published-value reproduction tests will break.
 
-## 9. データの原本
+## 9. Data originals
 
-`data/*.zip` が原本。展開ディレクトリ（`data/dataset/` 等）を直接編集しない。fixtures の再生成は `scripts/extract_baseline_fixtures.py` 経由で行う。
+`data/*.zip` are the originals. Never edit the extracted directories (`data/dataset/` etc.) directly. Regenerate test fixtures only via `scripts/extract_baseline_fixtures.py`.
