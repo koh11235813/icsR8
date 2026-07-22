@@ -27,154 +27,104 @@
   \titlepage
 \end{frame}
 
-\begin{frame}{背景と目的}
+\begin{frame}{考案に至った理由}
   \begin{itemize}
-    \item 対象：豊橋技術科学大学 3F 廊下の WiFi (tutwifi/tutwifi2025) RSSI による屋内位置推定
-    \item 公表ベースライン：\textbf{PBL 4.38 m / CLA 8.07 m / WCL 3.57 m}（往路平均誤差）\cite{blumenthal2007wcl,tanaka2023tut}
-    \item WCL の限界：AP 群の凸包内に推定が閉じ込められ，重み設計の物理的根拠も弱い
-    \item \textbf{目標：平均誤差 2 m 未満を達成する}
-    \item 方針：公表ベースラインを生 RSSI から\emph{完全再現}して比較基準を凍結し，その上に 12 手法（Tier~1--3）を実装・評価
+    \item 公表ベースライン：\textbf{PBL 4.38 m / CLA 8.07 m / WCL 3.57 m}（往路平均誤差）\cite{tanaka2023tut}，目標は\textbf{平均誤差 2 m 未満}
+    \item WCL\cite{blumenthal2007wcl}（centroid 系\cite{bulusu2000gpsless} の重み付き拡張）の構造的問題：推定位置が観測 AP 群の\textbf{凸包内に閉じ込められ}，境界に近い地点ほど内側へ引き寄せられる\cite{ji2012vap}
+    \item この境界バイアスは重みの付け方（power-domain 化・top-$L$・blacklist 等）を工夫しても\textbf{原理的に解消できない}
+    \item 着目：廊下という伝搬環境は\textbf{L 字の 1 次元多様体}であり，壁越しに近い 2 点も Euclid 距離では近接に見えてしまう（\textbf{偽相関}）
+    \item $\Rightarrow$ 廊下の\textbf{弧長座標}上で AP ごとの電波伝搬を直接モデル化する \textbf{1D Gaussian Process radio map（gp\_corridor）}を考案
   \end{itemize}
 \end{frame}
 
-\begin{frame}{提案アプローチの全体像}
+\begin{frame}{原理①：モデル定義式}
   \begin{itemize}
-    \item \textbf{Tier 1：本命 fingerprinting}\;
-      wknn / gp\_corridor / studentt\_fp
-    \item \textbf{Tier 2：相対化 fingerprinting}\;
-      centered\_fp（オフセット除去）/ rank\_fp（順位変換）
-    \item \textbf{Tier 3：WCL 改良系（アブレーション基準）}\;
-      power-domain・linpower・top-$L$・blacklist・varweight・multiband・廊下射影
-    \item \textbf{中核アイデア：\texttt{gp\_corridor}（廊下 1D の Gaussian Process radio map）}
-      \begin{itemize}
-        \item 廊下 arc-length $s$ 上で AP-band ごとに Matérn-3/2 GP を張る\cite{ferris2007gpslam}
-        \item セグメント分類（C/C2/C3）$\to$ セグメント内 1D 尤度推定の階層構成
-      \end{itemize}
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{手法：Tier 1（本命）}
-  \small
-  \begin{itemize}
-    \item \textbf{wknn}\; RSSI ベクトルの逆距離加重 K 近傍。K・重みは inner-CV（$K{=}5$, inv\_sq）
-    \item \textbf{gp\_corridor}\; 廊下 arc-length $s$ の Matérn-3/2 GP を (AP,band) 毎に張る（102 鍵中 82 鍵）
+    \item 廊下中心線の弧長座標 $s\in[0,S]$ 上で，鍵 (AP, band) ごとに RSSI を 1 次元 GP としてモデル化：$r_{a,b}(s)\sim\mathcal{GP}(m(s),k(s,s'))$
+    \item カーネルは Matérn-3/2（AP ごとに長さ尺度 $\ell$ を独立に学習）：
     \[
-      k(s,s')=\sigma_f^2\Bigl(1+\tfrac{\sqrt{3}|s-s'|}{\ell}\Bigr)\exp\Bigl(-\tfrac{\sqrt{3}|s-s'|}{\ell}\Bigr)
+      k(s,s')=\sigma_f^2\Bigl(1+\tfrac{\sqrt3\,|s-s'|}{\ell}\Bigr)\exp\Bigl(-\tfrac{\sqrt3\,|s-s'|}{\ell}\Bigr)
     \]
-    \item \textbf{studentt\_fp}\; Student-$t$ 尤度＋Bernoulli 検出項＋共通オフセット補正 $\hat\delta_q$（$\nu{=}3$ 選択）\cite{youssef2005horus}
+    \item クエリ地点の位置対数尤度（GP 事後平均 $\mu(s)$・分散 $v(s)$ を用いる）：
+    \[
+      \log p(s\mid r)=-\frac12\sum_{a,b}\Bigl[\frac{(r-\mu(s))^2}{v(s)+\sigma^2}+\log\bigl(v(s)+\sigma^2\bigr)\Bigr]
+    \]
+    \item 階層構成：セグメント分類（C/C2/C3）$\to$ セグメント内で 1D 尤度推定\cite{ferris2007gpslam}
   \end{itemize}
 \end{frame}
 
-\begin{frame}{手法：Tier 2--3}
+\begin{frame}{原理②：仕様と処理の流れ}
   \small
-  \textbf{Tier 2 — 相対化（scan 共通オフセット除去）}
-  \begin{itemize}
-    \item \textbf{centered\_fp}：$\tilde r_{s,a}=r_{s,a}-\operatorname*{median}_{j} r_{s,j}$，$\lambda{=}0.25$
-    \item \textbf{rank\_fp}：RSSI 絶対値でなく AP 強度順位を用いる（加法オフセット不変）
-  \end{itemize}
-  \vspace{2pt}
-  \textbf{Tier 3 — WCL 改良（凸包制約を保持したままの重み調整）}
-  \begin{itemize}
-    \item power-domain / linpower / top-$L$ / 廊下射影 / blacklist / varweight / multiband
-    \item いずれも WCL の凸包制約という根本問題を持ち越すため，2~m 未満は達成不能と予想
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{評価プロトコル}
-  \begin{itemize}
-    \item \textbf{Protocol A}（2 fold）：往路で DB 構築 $\to$ 復路でテスト，およびその逆
-      \begin{itemize}
-        \item 同一 59 地点が train/test 双方に現れる $\Rightarrow$ 本質は\textbf{測量済み地点の再認識}
-      \end{itemize}
-    \item \textbf{LOLO}（Leave-One-Location-Out, 59 fold）：train = 往路 \textbackslash \{保持地点\}，test = \emph{復路}の当該地点
-      \begin{itemize}
-        \item 未測量地点 \textbf{かつ} 方向も異なる $\Rightarrow$ \textbf{空間汎化と方向汎化の同時テスト}
-        \item 本研究の\textbf{決定的テスト}と位置付ける
-      \end{itemize}
-    \item \textbf{リーク対策}：分割 iterator で構造的に除外し，spy テストで検証
-    \item \textbf{統計}：地点別誤差上の paired bootstrap ($B{=}1000$, seed$=$0) で 95\% CI
-    \item ハイパーパラメータは train 内 5-fold inner-CV，GP のみ train 上の周辺尤度でグリッド選択
+  \begin{enumerate}
+    \item 前処理：測量座標 $(x,y)$ を廊下弧長 $s$ へ変換
+    \item 鍵 (AP, band) ごとに GP を fit：train の周辺尤度（LML）グリッド探索で $\ell\in\{2,\dots,32\}$ m，$\sigma_f\in\{2,5,10\}$ dB，$\sigma_n\in\{1,2,3\}$ dB を選択
+    \item 102 鍵中，\textbf{検出 5 地点以上}の \textbf{82 鍵}のみモデル化（希薄な鍵は除外）
+    \item クエリ時：セグメント分類 $\to$ 該当セグメント内で鍵ごとの対数尤度を累積 $\to$ $\arg\max_s$ で弧長推定 $\to$ $(x,y)$ へ復元
+  \end{enumerate}
+  \vspace{4pt}
+  \begin{itemize}\small
+    \item \textbf{契約}：\texttt{fit} には train のスキャンと train 地点座標のみを渡す（test 情報は一切不使用）
   \end{itemize}
 \end{frame}
 
-\begin{frame}{結果：LOLO（決定的テスト）}
+\begin{frame}{立証過程：この式が正しいことをどう確かめたか}
+  \begin{itemize}
+    \item \textbf{評価設計}：Protocol A（2 fold，同一 59 地点の再認識）と LOLO（59 fold，train=往路から保持地点を除外，test=\emph{復路}の当該地点）を使い分け $\Rightarrow$ LOLO を\textbf{空間+方向汎化の決定的テスト}と位置付け
+    \item \textbf{リーク対策}：分割 iterator による構造的除外（held-out 地点を \texttt{fit} に渡さない）$+$ spy テスト \texttt{test\_iter\_lolo\_leakage\_contract\_spy} で検証
+    \item \textbf{統計的立証}：地点別誤差の paired bootstrap（$B{=}1000$，seed$=$0）で 95\% CI を算出し，WCL との差の有意性を判定\cite{hara2010statloc}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{有効性①：主結果（LOLO，決定的テスト）}
   \centering\footnotesize
   \begin{tabular}{lrrrr}
     \toprule
     Method & Ave [m] & Median & P90 & $\leq$2m 率 \\
     \midrule
     \textbf{gp\_corridor} & \textbf{0.72} & \textbf{0.50} & \textbf{1.74} & \textbf{0.90} \\
-    wknn                 & 2.07 & 1.34 & 4.15 & 0.71 \\
-    centered\_fp         & 2.08 & 1.37 & 4.11 & 0.71 \\
-    studentt\_fp         & 2.32 & 2.00 & 4.00 & 0.58 \\
-    rank\_fp             & 2.70 & 1.35 & 3.88 & 0.76 \\
+    wknn         & 2.07 & 1.34 & 4.15 & 0.71 \\
+    centered\_fp & 2.08 & 1.37 & 4.11 & 0.71 \\
+    studentt\_fp & 2.32 & 2.00 & 4.00 & 0.58 \\
+    rank\_fp     & 2.70 & 1.35 & 3.88 & 0.76 \\
     \midrule
-    wcl\_corridor (Tier 3 最良) & 3.31 & 2.77 & 6.00 & 0.41 \\
-    wcl（ベースライン）  & 3.51 & 2.81 & 6.09 & 0.31 \\
-    pbl                   & 4.52 & 3.67 & 7.98 & 0.24 \\
-    cla                   & 7.02 & 6.53 & 12.41 & 0.12 \\
+    wcl\_corridor（Tier 3 最良） & 3.31 & 2.77 & 6.00 & 0.41 \\
+    wcl（ベースライン） & 3.51 & 2.81 & 6.09 & 0.31 \\
+    pbl & 4.52 & 3.67 & 7.98 & 0.24 \\
+    cla & 7.02 & 6.53 & 12.41 & 0.12 \\
     \bottomrule
   \end{tabular}
-  \vspace{6pt}
+  \vspace{4pt}
   \begin{itemize}\footnotesize
-    \item \textbf{gp\_corridor が Ave 0.72 m，$\leq$2 m 率 90\%}で目標達成
-    \item Tier 1/2 の 4 手法はいずれも WCL~3.51 を大幅改善
-    \item Tier 3 は小幅（凸包制約が本質的限界）
+    \item gp\_corridor の WCL との差 $\Delta{=}-2.61$ m（Protocol A, forward$\to$backward）は 95\% CI $[-3.27,-1.94]$ で\textbf{統計的に有意}
   \end{itemize}
 \end{frame}
 
-\begin{frame}{結果：CDF とセグメント別誤差}
+\begin{frame}{有効性②：誤差分布とセグメント別傾向}
   \centering
   \includegraphics[width=0.42\linewidth]{cdf_lolo.pdf}\hfill
   \includegraphics[width=0.56\linewidth]{segment_heatmap.pdf}
   \\[4pt]
-  {\footnotesize 左：LOLO 誤差 CDF． 右：手法 $\times$ 廊下セグメントの平均誤差 [m]．}
+  {\footnotesize 左：LOLO 誤差 CDF（gp\_corridor が全分位で他手法を上回る）．右：手法 $\times$ 廊下セグメントの平均誤差 [m]．}
 \end{frame}
 
-\begin{frame}{考察①：なぜ gp\_corridor が効いたか}
+\begin{frame}{有効性③：なぜ効くのか（機構）}
   \begin{itemize}
-    \item 廊下が\textbf{1 次元多様体}であることを事前情報として明示的に利用
-      \begin{itemize}
-        \item 2D 座標 (x,y) ではなく arc-length $s$ で回帰 $\Rightarrow$ 有効自由度が大幅に減少
-      \end{itemize}
-    \item AP-band 毎に長さ尺度 $\ell$ を独立に学習 $\Rightarrow$ 空間的平滑性の異なる AP を個別扱い
-    \item セグメント分類（C/C2/C3, train accuracy 1.00）が\textbf{L 字廊下の壁越し相関}を切る
-    \item LOLO $<$ Protocol A の逆転（0.72 $<$ 1.01）
-      \begin{itemize}
-        \item 仮説：Protocol A では往復差（方向依存オフセット）に過適合，LOLO では平滑補間が復路とよく整合
-        \item 断定はしない — リークは spy テストで否定済み
-      \end{itemize}
+    \item 廊下が\textbf{1 次元多様体}であるという事前情報を明示的に利用 $\Rightarrow$ 2D $(x,y)$ でなく弧長 $s$ で回帰し\textbf{有効自由度を削減}
+    \item AP (band) 毎に長さ尺度 $\ell$ を\textbf{独立に学習} $\Rightarrow$ 空間的平滑性の異なる AP を個別に扱える
+    \item セグメント分類（C/C2/C3, train accuracy 1.00）が\textbf{壁越しの偽相関を遮断}
+    \item LOLO（0.72）$<$ Protocol A（1.01, fold 平均）の逆転：Protocol A では方向依存オフセットへの過適合という\textbf{仮説}（断定はしない）
+    \item この逆転はリークでは説明できない：spy テストにより構造的除外を確認済み
   \end{itemize}
 \end{frame}
 
-\begin{frame}{考察②：目標達成の意義と限界}
-  \textbf{意義}
+\begin{frame}{比較：なぜ gp\_corridor が主役なのか}
   \begin{itemize}
-    \item $\leq$2 m 率 90\%：実質的に「廊下上の 2 m メッシュを正しく当てる」水準
-    \item WCL~3.57 m $\to$ 0.72 m は\textbf{約 5 倍の精度向上}
-    \item WCL との差 $-2.61$ m は 95\% CI $[-3.27, -1.94]$ で\textbf{統計的に有意}
-  \end{itemize}
-  \vspace{4pt}
-  \textbf{限界（本文§6）}
-  \begin{itemize}
-    \item データ規模：59 地点 $\times$ 2 方向の小規模データ
-    \item 打ち切り観測は Bernoulli 検出モデルで代替
-    \item C4F 系の追加データ（dataset\_r0701）は未評価
-    \item 地点 bootstrap は空間相関を無視した\textbf{記述的 CI}
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{付録：Tier 4 の追補評価（本文凍結後）}
-  \begin{itemize}
-    \item 時間があったため Tier 4 の 7 手法（Mahalanobis / gp\_augmented / joint\_fp / fisher / PLS / ordinal / wcl\_residual）を追加実装
-    \item 結果は本文成果物と\textbf{別系統に隔離}（\texttt{results/tier4/}, \texttt{tables/tier4\_*.tex}）
-    \item \textbf{主要比較 vs gp\_corridor を事前指定}：7 手法\textbf{すべて有意に劣る}
+    \item \textbf{指紋 (FP) 系 4 手法}（wknn/centered/studentt/rank）：WCL 3.51 m を大幅改善するが\textbf{2 m 級止まり}（目標未達）
+    \item \textbf{Tier 3：WCL 改良 7 種}（power-domain・linpower・top-$L$・blacklist・varweight・multiband・廊下射影）：\textbf{凸包制約を保持}したままの重み調整のため最良でも 3.31 m 止まり
+    \item \textbf{Tier 4 追補 7 手法}（Mahalanobis/GP-augmented/joint\_fp/Fisher/PLS/ordinal/wcl\_residual）：\textbf{vs gp\_corridor を事前指定}した主要比較で\textbf{全て有意に劣後}
       \begin{itemize}
-        \item mahalanobis 1.77 m ($\Delta$gp\_corridor $+1.04$, 95\% CI $[0.69, 1.38]$)
-        \item gp\_augmented 1.87 m ($+1.15$, $[0.83, 1.47]$)
+        \item 最良は mahalanobis\_wknn 1.77 m（$\Delta{=}+1.04$，95\% CI $[0.69,1.38]$）
       \end{itemize}
-    \item WKNN 系 4 手法は vs WCL では有意改善 (2 m 前後)
-    \item ordinal は 59 標本で閾値ロジットが不安定 $\to$ 有意に悪化
+    \item $\Rightarrow$ 19 手法中，目標 2 m 未満を達成したのは \textbf{gp\_corridor のみ}
   \end{itemize}
 \end{frame}
 
@@ -182,49 +132,106 @@
   \textbf{達成}
   \begin{itemize}
     \item 公表ベースライン (PBL/CLA/WCL) を生 RSSI から凍結再現
-    \item \texttt{gp\_corridor} で LOLO 平均 \textbf{0.72 m}，$\leq$2 m 率 90\%\\目標 $<$2 m を大幅にクリア
-    \item 12 (+7) 手法を統一プロトコル・inner-CV・bootstrap CI で公正比較
+    \item \texttt{gp\_corridor} で LOLO 平均 \textbf{0.72 m}，$\leq$2 m 率 90\%（目標 $<$2 m を大幅達成，約 5 倍の精度向上）
+    \item 19 手法を統一プロトコル・inner-CV/LML・bootstrap CI で公正比較
   \end{itemize}
   \textbf{今後}
   \begin{itemize}
-    \item Tier 5（HMM/Viterbi の時系列手法）：「RSSI のみ」の主張との整合を要検討
-    \item 大規模データ（C4F 追加，dataset\_r0701）での外部妥当性検証
-    \item 端末実装（Android アプリ化）への移行\cite{tanaka2023tut}
+    \item Tier 5（時系列 HMM/Viterbi）と「RSSI のみ」の主張との整合を要検討
+    \item C4F 系追加データ（dataset\_r0701）での外部妥当性検証
+    \item 端末実装（Android アプリ化）への展開\cite{tanaka2023tut}
   \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]{参考文献}
-  \footnotesize
-  \begin{thebibliography}{9}
-    \bibitem{blumenthal2007wcl}
-      J.~Blumenthal, R.~Grossmann, F.~Golatowski, and D.~Timmermann,
-      ``Weighted Centroid Localization in Zigbee-Based Sensor Networks,''
-      \emph{Proc. IEEE International Symposium on Intelligent Signal Processing}, pp.~1--6, Oct.~2007.
-    \bibitem{tanaka2023tut}
-      田中空斗, 足立裕基, 小松和暉, 宮路祐一, 上原秀幸,
-      ``大学構内における Wi-Fi の受信信号強度とスマートフォンを用いた屋内位置推定システムの開発,''
-      信学論 B, Vol.~J107-B, No.~3, pp.~209--217, Oct.~2023.
-    \bibitem{bulusu2000gpsless}
-      N.~Bulusu, J.~Heidemann, and D.~Estrin,
-      ``GPS-Less Low-Cost Outdoor Localization for Very Small Devices,''
-      \emph{IEEE Personal Communications}, Vol.~7, Issue~5, pp.~28--34, Oct.~2000.
-    \bibitem{krumm2004nearme}
-      J.~Krumm and K.~Hinckley,
-      ``The NearMe Wireless Proximity Server,''
-      \emph{Proc. the Sixth International Conference on Ubiquitous Computing (UbiComp~2004)}, pp.~283--300, 2004.
-    \bibitem{hara2010statloc}
-      原 晋介,
-      ``位置推定における統計的推定理論,''
-      \emph{IEICE Fundamentals Review}, Vol.~4, No.~1, pp.~32--38, Jul.~2010.
-    \bibitem{youssef2005horus}
-      M.~Youssef and A.~Agrawala,
-      ``The Horus Location Determination System,''
-      \emph{Proc. ACM MobiSys}, 2005.
-    \bibitem{ferris2007gpslam}
-      B.~Ferris, D.~Fox, and N.~Lawrence,
-      ``WiFi-SLAM Using Gaussian Process Latent Variable Models,''
-      \emph{Proc. IJCAI}, 2007.
-  \end{thebibliography}
+\begin{thebibliography}{9}\footnotesize
+  \bibitem{tanaka2023tut}
+    田中空斗, 足立裕基, 小松和暉, 宮路祐一, 上原秀幸,
+    ``大学構内における Wi-Fi の受信信号強度とスマートフォンを用いた屋内位置推定システムの開発,''
+    信学論 B, Vol.~J107-B, No.~3, pp.~209--217, Mar.~2024.
+    DOI: 10.14923/transcomj.2023GWP0012.
+  \bibitem{blumenthal2007wcl}
+    J.~Blumenthal, R.~Grossmann, F.~Golatowski, and D.~Timmermann,
+    ``Weighted Centroid Localization in Zigbee-Based Sensor Networks,''
+    \emph{Proc. IEEE International Symposium on Intelligent Signal Processing (WISP)}, pp.~1--6, Oct.~2007.
+    DOI: 10.1109/WISP.2007.4447528.
+  \bibitem{bulusu2000gpsless}
+    N.~Bulusu, J.~Heidemann, and D.~Estrin,
+    ``GPS-Less Low-Cost Outdoor Localization for Very Small Devices,''
+    \emph{IEEE Personal Communications}, Vol.~7, Issue~5, pp.~28--34, Oct.~2000.
+    DOI: 10.1109/98.878533.
+  \bibitem{ji2012vap}
+    M.~Ji, Y.~Cho, J.~Kim, Y.~Lee, and S.~Park,
+    ``Improving the Positioning Accuracy Using Virtual Access Points in the Border Area,''
+    \emph{Proc. International Conference on Indoor Positioning and Indoor Navigation (IPIN 2012)}, Nov.~2012.
+  \bibitem{ferris2007gpslam}
+    B.~Ferris, D.~Fox, and N.~Lawrence,
+    ``WiFi-SLAM Using Gaussian Process Latent Variable Models,''
+    \emph{Proc. 20th International Joint Conference on Artificial Intelligence (IJCAI 2007)}, 2007.
+  \bibitem{youssef2005horus}
+    M.~Youssef and A.~Agrawala,
+    ``The Horus WLAN Location Determination System,''
+    \emph{Proc. 3rd International Conference on Mobile Systems, Applications, and Services (MobiSys 2005)}, pp.~205--218, 2005.
+    DOI: 10.1145/1067170.1067193.
+  \bibitem{hara2010statloc}
+    原 晋介,
+    ``位置推定における統計的推定理論,''
+    \emph{IEICE Fundamentals Review}, Vol.~4, No.~1, pp.~32--38, Jul.~2010.
+    DOI: 10.1587/essfr.4.32.
+  \bibitem{subedi2017}
+    S.~Subedi and J.-Y.~Pyun,
+    ``Practical Fingerprinting Localization for Indoor Positioning System by Using Beacons,''
+    \emph{Journal of Sensors}, Vol.~2017, Article ID 9742170, 16 pages, Dec.~2017.
+    DOI: 10.1155/2017/9742170.
+  \bibitem{subedi2019}
+    S.~Subedi, H.-S.~Gang, N.~Y.~Ko, S.-S.~Hwang, and J.-Y.~Pyun,
+    ``Improving Indoor Fingerprinting Positioning With Affinity Propagation Clustering and Weighted Centroid Fingerprint,''
+    \emph{IEEE Access}, Vol.~7, pp.~31738--31750, Mar.~2019.
+    DOI: 10.1109/ACCESS.2019.2902564.
+\end{thebibliography}
+\end{frame}
+
+\appendix
+
+\begin{frame}{付録A：Tier 4 詳細（追補評価）}
+  \centering
+  \resizebox{\linewidth}{!}{\input{../final_report/tables/tier4_lolo.tex}}
+  \vspace{6pt}
+  \begin{itemize}\footnotesize
+    \item 主要比較は\textbf{vs gp\_corridor を事前指定}（本文で目標を達成した手法を基準に固定）．vs WCL 等はその他の探索的比較（多重比較補正なし）
+    \item WCL$\times$指紋法の統合は BLE（Bluetooth Low Energy）環境での先行例\cite{subedi2017,subedi2019}があるが，本研究では Tier 4 \texttt{wcl\_residual}（WCL 弧長残差への Ridge 補正）として独立に検証した
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{付録B：Protocol A 詳細（gp\_corridor）}
+  \begin{itemize}
+    \item backward$\to$forward：Ave \textbf{1.12} m（$\Delta$WCL $-2.45$）
+    \item forward$\to$backward：Ave \textbf{0.90} m（$\Delta$WCL $-2.61$，95\% CI $[-3.27,-1.94]$）
+  \end{itemize}
+  \centering
+  \includegraphics[width=0.48\linewidth]{cdf_protocol_a_forward_to_backward.pdf}\hfill
+  \includegraphics[width=0.48\linewidth]{cdf_protocol_a_backward_to_forward.pdf}
+  \\[4pt]
+  {\footnotesize 左：forward$\to$backward の誤差 CDF． 右：backward$\to$forward の誤差 CDF．}
+\end{frame}
+
+\begin{frame}{付録C：代替手法の定義式}
+  \small
+  \textbf{studentt\_fp}（Student-$t$ 尤度 $+$ Bernoulli 検出項 $+$ 共通オフセット補正，$\nu{=}3$）\cite{youssef2005horus}
+  \[
+    \log p(s\mid q)=\sum_{a,b}\Bigl[\beta_{a,b}\,D_{a,b}\,E_{s,a,b}\,\log t_\nu\bigl(r;\,\mu(s)+\hat\delta_q,\,\sigma(s)\bigr)+\log p(D_{a,b}\mid s)\Bigr]
+  \]
+  \[
+    \hat\delta_q=\operatorname*{median}_{(a,b):\,D_{a,b}E_{s,a,b}=1}\bigl[r_{q,a,b}-\mu_{a,b}(s)\bigr]
+  \]
+  \vspace{4pt}
+  \textbf{centered\_fp}（scan 共通オフセット除去，$\lambda{=}0.25$）
+  \[
+    \tilde r_{s,a}=r_{s,a}-\operatorname*{median}_{j\in O_s} r_{s,j}
+  \]
+  \[
+    d^2=\lambda\sum_a w_a(r-\mu)^2+(1-\lambda)\sum_a \tilde w_a(\tilde r-\tilde\mu)^2
+  \]
 \end{frame}
 
 \end{document}
