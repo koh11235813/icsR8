@@ -8,3 +8,12 @@ __pycache__/
 *.egg-info/
 MEMO.md
 note
+doc/**/main.aux
+doc/**/main.fdb_latexmk
+doc/**/main.fls
+doc/**/main.log
+doc/**/main.synctex.gz
+doc/**/main.nav
+doc/**/main.out
+doc/**/main.snm
+doc/**/main.toc
