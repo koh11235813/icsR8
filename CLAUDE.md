@@ -39,9 +39,11 @@ Separate functions into separate files by type, and do not recreate existing fun
 
 Cautions for changing this repository. Each rule below was codified after an actual (or narrowly avoided) incident; see docs/adr/ for the full history.
 
-## 1. Freeze contract — six files you must not touch
+## 1. Freeze contract — seven document artifacts you must not touch
 
-`results/{protocol_a,lolo_ledger,lolo_summary}.csv`, `doc/final_report/tables/{lolo,protocol_a}.tex`, and `doc/final_report/figures/cdf_lolo.pdf` are the frozen main-body artifacts. **Never hand-edit or casually regenerate them.** When regeneration is genuinely needed, use only the command in README "Tier ごとの評価手順" with the 15 main-body methods listed explicitly. The pipeline is deterministic (seed=0), so a correct regeneration is byte-identical to HEAD — any diff means something is broken.
+`doc/final_report/tables/{lolo,protocol_a}.tex` and `doc/final_report/figures/{cdf_lolo,cdf_lolo_tier4,cdf_protocol_a_forward_to_backward,cdf_protocol_a_backward_to_forward,segment_heatmap}.pdf` are the frozen main-body document artifacts. **Never hand-edit or casually regenerate them.** When regeneration is genuinely needed, use only the command in README "Tier ごとの評価手順" with the 15 main-body methods listed explicitly. Table TeX flows through `%.2f` and stays byte-identical to HEAD across OS; figure PDFs are visually invariant despite ULP-level numeric drift and have been versioned since commit `076bec5 add: pdf contents`.
+
+# 2026-07-23 freeze-contract pivot: `results/{protocol_a,lolo_ledger,lolo_summary}.csv` — previously frozen — are now gitignored regeneratable derivatives. Mac(Accelerate) ↔ Linux(OpenBLAS) BLAS implementation differences drift them at ULP scale, so any cross-OS byte-identity claim breaks. Document-visible numbers survive the drift because they go through `%.2f`. See `docs/adr/0001-freeze-main-body-artifacts.md` for the pre-pivot rationale and README §凍結契約 for the current state.
 
 ## 2. Never run `run_all_methods.py` without `--methods`
 
@@ -58,7 +60,7 @@ uv run pytest                           # 374 tests (freeze guard, leak contract
 uv run python scripts/verify_report.py  # byte-level CSV↔TeX reconciliation + main.tex reference-path existence
 ```
 
-Run both no matter what you touched — code, results, or LaTeX. One alone is insufficient (pytest does not check document/table consistency; verify_report does not check behavior).
+Run both no matter what you touched — code, results, or LaTeX. One alone is insufficient (pytest does not check document/table consistency; verify_report does not check behavior). **On a fresh clone `results/*.csv` are absent (gitignored since 2026-07-23); run `scripts/run_all_methods.py --methods …` and `scripts/run_tier4.py` first to populate them before invoking these gates.**
 
 ## 5. Conventions for adding a method
 

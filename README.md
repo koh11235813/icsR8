@@ -23,10 +23,10 @@ LOLO 評価で平均誤差 **0.72 m** (≤2 m 率 90%) を達成し、目標の 
 │   ├── slides/           発表スライド (Beamer) + ナレーション台本 narration.md
 │   ├── mid_report/       中間報告書
 │   └── pdf/              課題ガイダンス・課題テキスト等の配布資料
-└── results/
-    ├── *.csv             本文 Tier 1–3（15 手法）の凍結成果物
-    ├── tier4/            Tier 4（付録 A、7 手法）の隔離成果物
-    └── extra/            追試（vWCL 等）の隔離成果物
+└── results/              CSV は gitignore（再生成物）。ログのみ版管理
+    ├── *.csv             本文 Tier 1–3（15 手法）の生成 CSV（都度再生成、OS 依存）
+    ├── tier4/            Tier 4（付録 A、7 手法）の隔離成果物（CSV は再生成物）
+    └── extra/            追試（vWCL 等）の隔離成果物（CSV は再生成物）
 ```
 
 ## セットアップ
@@ -37,19 +37,32 @@ uv sync --all-groups
 
 ## 凍結契約（最重要）
 
-本文の比較基準を守るため、以下の 6 ファイルは**凍結**されている
+本文の比較基準を守るため、以下の**表 TeX 2 本 + 図 PDF 5 本 = 7 ファイル**は**凍結**されている
 （根拠テスト: `tests/test_harness_tier4.py::test_run_tier4_refuses_frozen_output`）:
 
-- `results/protocol_a.csv` / `results/lolo_ledger.csv` / `results/lolo_summary.csv`
 - `doc/final_report/tables/protocol_a.tex` / `doc/final_report/tables/lolo.tex`
 - `doc/final_report/figures/cdf_lolo.pdf`
+- `doc/final_report/figures/cdf_lolo_tier4.pdf`
+- `doc/final_report/figures/cdf_protocol_a_forward_to_backward.pdf`
+- `doc/final_report/figures/cdf_protocol_a_backward_to_forward.pdf`
+- `doc/final_report/figures/segment_heatmap.pdf`
 
 手編集は禁止。再生成する場合も**本文 15 手法を明示した**下記コマンドのみを使う。
-評価パイプラインは決定的（seed 固定）なので、正しく再生成すれば HEAD と byte 一致する。
+表 TeX は `%.2f` を通すため OS 中立で HEAD と byte 一致する想定、
+図 PDF は視覚差なし前提で `076bec5` 以降 git 管理下。
+
+`results/*.csv` は本文値の元になる中間 CSV だが Mac(Accelerate) と Linux(OpenBLAS) の
+BLAS 実装差で ULP レベルにドリフトするため、byte 一致契約から外して gitignore の
+再生成物として扱う（2026-07-23 の凍結契約刷新）。歴史的経緯は
+`docs/adr/0001-freeze-main-body-artifacts.md`。
 
 ## Tier ごとの評価手順
 
-### 本文 Tier 1–3（15 手法・凍結成果物の再生成）
+### 本文 Tier 1–3（15 手法・CSV と表 TeX/図 PDF の生成）
+
+`results/*.csv` は gitignore されているため、フレッシュクローンでは存在しない。
+`verify_report.py` や pytest を回す前に、まずこのコマンドで CSV を生成する。
+凍結対象の表 TeX と図 PDF も同時に再生される（HEAD と byte 一致するはず）。
 
 ```bash
 uv run python scripts/run_all_methods.py --methods \
@@ -58,7 +71,7 @@ uv run python scripts/run_all_methods.py --methods \
 
 > **警告**: `--methods` を省略してはならない。レジストリは `src/icsr8/methods/` を
 > 自動探索するため、省略すると登録済みの Tier 4 以降の手法まで掃引し、
-> 凍結成果物（本文の表・CSV・図）を上書きしてしまう（2026-07-14 に実際に発生した事故。
+> 凍結成果物（本文の表・図）を上書きしてしまう（2026-07-14 に実際に発生した事故。
 > 詳細は `docs/adr/0001-freeze-main-body-artifacts.md`）。
 
 ### Tier 4（付録 A・隔離評価）
@@ -85,6 +98,8 @@ uv run python scripts/run_tier4.py --methods wcl_virtual_ap \
 > `tier4_*.tex`（付録 A の表）を少数手法版で上書きしてしまう。
 
 ### 診断値・検証ゲート
+
+フレッシュクローン直後は `results/*.csv` が無いので、先に §本文 Tier 1–3 のコマンドで CSV を生成してから両ゲートを回す。
 
 ```bash
 uv run python scripts/dump_method_diagnostics.py   # results/method_diagnostics.csv 再生成
@@ -115,7 +130,8 @@ uv run python scripts/verify_report.py             # 表数値・診断値・TeX
 (cd doc/slides       && latexmk -lualatex main.tex)   # 発表スライド（Beamer）
 ```
 
-`*.pdf` は gitignore されておりコミットされない（表 TeX 断片と CSV が正）。
+本文 PDF・図 PDF は `076bec5 add: pdf contents` 以降 git 管理下で、
+ビルド済み成果物が最終の版管理対象となる（`git pull` で他マシンのビルド結果を取得可能）。
 スライドのナレーション台本は `doc/slides/narration.md`（約 10 分配分付き）。
 
 ## 使い方（ライブラリ API）

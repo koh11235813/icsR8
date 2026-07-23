@@ -19,3 +19,9 @@ doc/**/main.snm
 doc/**/main.toc
 doc/pdf/
 doc/map_r0701.pdf
+
+# 2026-07-23 CSV は Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で
+# ULP レベルにドリフトするため、byte 一致契約から外して再生成物として扱う。
+# フレッシュクローン後は scripts/run_all_methods.py --methods ... と
+# scripts/run_tier4.py で生成する（詳細は README §凍結契約と CSV 生成）。
+results/**/*.csv
