@@ -1,7 +1,6 @@
 .DS_Store
 *.xlsx
 *.zip
-*.pdf
 __pycache__/
 .venv/
 .pytest_cache/
@@ -18,3 +17,5 @@ doc/**/main.nav
 doc/**/main.out
 doc/**/main.snm
 doc/**/main.toc
+doc/pdf/
+doc/map_r0701.pdf
