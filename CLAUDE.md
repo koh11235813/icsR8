@@ -56,7 +56,7 @@ Evaluate new/experimental methods with `run_tier4.py --methods <name> --output <
 ## 4. Always pass both gates after a change
 
 ```bash
-uv run pytest                           # 374 tests (freeze guard, leak contract, published-value reproduction)
+uv run pytest                           # 520 tests (freeze guard, leak contract, published-value reproduction)
 uv run python scripts/verify_report.py  # byte-level CSV↔TeX reconciliation + main.tex reference-path existence
 ```
 

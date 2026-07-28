@@ -16,7 +16,7 @@ LOLO 評価で平均誤差 **0.72 m** (≤2 m 率 90%) を達成し、目標の 
 ├── src/icsr8/            推定ライブラリ本体（詳細は「モジュール構成」）
 │   └── methods/          手法レジストリ（1 ファイル = 1 手法）
 ├── scripts/              評価・検証・再生成の CLI
-├── tests/                pytest（374 テスト。公表値再現・リーク契約・凍結ガード含む）
+├── tests/                pytest（520 テスト。公表値再現・リーク契約・凍結ガード含む）
 ├── data/                 測定データ（*.zip が原本。展開ディレクトリは直接編集しない）
 ├── doc/
 │   ├── final_report/     最終報告書 (LuaLaTeX)。tables/ と figures/ は生成物
@@ -103,7 +103,7 @@ uv run python scripts/run_tier4.py --methods wcl_virtual_ap \
 
 ```bash
 uv run python scripts/dump_method_diagnostics.py   # results/method_diagnostics.csv 再生成
-uv run pytest                                      # 374 テスト
+uv run pytest                                      # 520 テスト
 uv run python scripts/verify_report.py             # 表数値・診断値・TeX参照パスの整合検証
 ```
 
@@ -133,6 +133,13 @@ uv run python scripts/verify_report.py             # 表数値・診断値・TeX
 本文 PDF・図 PDF は `076bec5 add: pdf contents` 以降 git 管理下で、
 ビルド済み成果物が最終の版管理対象となる（`git pull` で他マシンのビルド結果を取得可能）。
 スライドのナレーション台本は `doc/slides/narration.md`（約 10 分配分付き）。
+
+## Google Colab
+
+icsR8 を Google Drive に置いて Colab から実行する手順は
+`docs/COLAB.md` にまとめてある（セットアップセル・結果生成・TeXLive
+ビルド・成果物の書き戻し）。アーキテクチャ上の決定は
+`docs/adr/0003-colab-bootstrap-isolation.md` を参照。
 
 ## 使い方（ライブラリ API）
 
