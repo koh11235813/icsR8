@@ -62,6 +62,18 @@ Colab 上の notebook validation のたびに毎回 8 分 + 45〜60 分 + 12 秒
    （引数ゼロの薄い CLI）と `scripts/run_experimental_tier4.py`
    （`--methods`/`--output`/`--tables-dir`/`--figures-dir` 全 required、
    sanctioned writer ではない）に置き換える。
+5. **（2026-07-29 Codex review finding 1 対応）** `_guard_frozen` の呼び出しを
+   `harness.make_figures` / `harness.make_tex_tables` /
+   `harness_tier4.make_figures_tier4` / `harness_tier4.make_tex_tables_tier4`
+   という実際に書き込みを行う低レベル関数自身の冒頭へ押し下げる。導入当初は
+   `report.regenerate_main_body()` が呼び出し側で `harness.make_figures` /
+   `make_tex_tables` を包んでガードしていたが、これらの関数は
+   `harness.py` を直接 import して呼ぶ経路には無防備だった
+   （`harness_tier4.run_tier4()` の冒頭ガードは同様に維持しつつ、
+   `make_figures_tier4` / `make_tex_tables_tier4` にも同じガードを追加した
+   — belt-and-suspenders）。各関数は `writer_id: str | None = None`
+   キーワード引数を受け取り、`report.py` の 2 関数がそれぞれの
+   sanctioned writer 識別子を渡す。
 
 ## Consequences
 
@@ -84,3 +96,21 @@ Colab 上の notebook validation のたびに毎回 8 分 + 45〜60 分 + 12 秒
   上位モジュールになり、依存グラフが一段深くなった。ただし `harness.py` /
   `harness_tier4.py` 自体のテスト可能な純関数群は変更していないため、
   既存のユニットテスト資産はそのまま有効。
+- **(iv) `writer_id` は Python の言語機能では偽装を防げない自己申告文字列で
+  ある**（2026-07-29 Codex review finding 1 対応で判明・明記）: `_guard_frozen`
+  は動的スタック検査をしない。悪意ある in-process caller が
+  `writer_id="icsr8.report.regenerate_main_body"` という文字列を手で書けば、
+  `harness.make_figures` / `harness.make_tex_tables` /
+  `harness_tier4.make_figures_tier4` / `harness_tier4.make_tex_tables_tier4`
+  を直接呼んで凍結パスへ書き込むことは Python レベルでは止められない。
+  この契約が実際に守るのは (i) **意図しない書き込み**（`writer_id` を渡し忘れる
+  新規 CLI・ad-hoc スクリプト・harness.py の低レベル関数を無警戒に直接呼ぶ
+  コード — デフォルト `writer_id=None` は常に非 sanctioned なので、これらは
+  何もしなくても reject される）と (ii) **凍結対象追加時の保護漏れ**（allowlist
+  方式なので、新しい書き手が増えても `writer_id` を明示的に渡さない限り
+  自動的に reject される。旧 blocklist 方式で `tier4_*.tex` /
+  `cdf_lolo_tier4.pdf` が一度も `FROZEN_OUTPUT_PATHS` に載らず無防備だった
+  ような穴を、新しい書き手を追加するたびに手動で塞ぐ必要が無くなる）の
+  2 点である。悪意ある in-process caller や hand-edit そのものは Python
+  レベルでは防げないため、code review と CI（`uv run pytest` +
+  `scripts/verify_report.py`）で catch する運用に依存する。

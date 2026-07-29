@@ -16,6 +16,11 @@ from icsr8.report import regenerate_main_body
 
 
 def main() -> int:
+    """引数を一切受け取らない薄い CLI エントリポイント。
+
+    選べる余地（手法リスト・出力先）を CLI 層に持たせないことが本モジュールの
+    存在意義そのものなので、argparse を意図的に持たない。
+    """
     regenerate_main_body()
     return 0
 

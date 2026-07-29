@@ -553,10 +553,23 @@ def stage_working_copy(source: Path, workdir: Path, *, refresh: bool = False) ->
         # results/ はパイプライン所有の可変領域なので整合性検査の対象から外す（外さないと、
         # スイープ実行後の 2 冊目の notebook で bootstrap の再利用が拒否され、
         # 生成済み results もろとも作業コピーが作り直されてしまう）。
+        # 2026-07-30 Codex review finding 3 対応: docs/COLAB.md の regen 手順
+        # （regenerate_main_body.py / regenerate_appendix_a.py）は staged 作業
+        # コピー上の doc/final_report/{tables,figures} も正規動作として書き換える
+        # （sanctioned writer — src/icsr8/report.py 参照）。results/ と同じ理由で
+        # この 2 ディレクトリも整合性検査の対象から外す。main.tex・main.pdf・
+        # .latexmkrc 等（doc/final_report/ 直下や tables/figures 以外）は
+        # regen パイプラインが触らない tracked ファイルなので対象外化しない
+        # （改変を検出できる状態を維持する）。
         # source の鮮度判定は上の digest 比較（source 側のみ）が引き続き担う。
+        _PIPELINE_OWNED_PREFIXES = (
+            "results/",
+            "doc/final_report/tables/",
+            "doc/final_report/figures/",
+        )
         mismatched = [
             k for k, v in current_manifest.items()
-            if not k.startswith("results/") and staged_manifest.get(k) != v
+            if not k.startswith(_PIPELINE_OWNED_PREFIXES) and staged_manifest.get(k) != v
         ]
         if mismatched:
             raise RuntimeError(

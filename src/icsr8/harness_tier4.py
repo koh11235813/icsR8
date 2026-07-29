@@ -510,8 +510,17 @@ def run_lolo_tier4(
 
 # --- 図 ----------------------------------------------------------------------
 
-def make_figures_tier4(lolo_ledger: pd.DataFrame, outdir: str | Path) -> list[Path]:
-    """9 手法（7 Tier4 + 2 reference）の LOLO CDF を 1 枚出力する。"""
+def make_figures_tier4(
+    lolo_ledger: pd.DataFrame, outdir: str | Path, *, writer_id: str | None = None
+) -> list[Path]:
+    """9 手法（7 Tier4 + 2 reference）の LOLO CDF を 1 枚出力する。
+
+    2026-07-29 allowlist 押し下げ: 凍結対象 `cdf_lolo_tier4.pdf` を直接書ける
+    唯一の書き手候補になる。以前は `run_tier4()` の冒頭ガードだけが頼りで、
+    本関数を直接 import して呼ぶ経路は無防備だった（Codex review finding 1）。
+    """
+    _guard_frozen([Path(outdir) / "cdf_lolo_tier4.pdf"], writer_id=writer_id)
+
     # Why not 環境変数 setdefault 頼み: 呼び出し前に別コードが GUI backend で
     # pyplot を初期化済みだと env は効かない。use(force=True) で確実に Agg へ。
     import matplotlib
@@ -603,9 +612,19 @@ def make_tex_tables_tier4(
     lolo_summary: pd.DataFrame | None,
     references: list[str],
     outdir: str | Path,
+    *,
+    writer_id: str | None = None,
 ) -> list[Path]:
-    """booktabs 風 tabular 断片（tier4_protocol_a.tex / tier4_lolo.tex）を書く。"""
+    """booktabs 風 tabular 断片（tier4_protocol_a.tex / tier4_lolo.tex）を書く。
+
+    2026-07-29 allowlist 押し下げ: 凍結対象 TeX 2 本を直接書ける唯一の
+    書き手候補になる（Codex review finding 1。詳細は make_figures_tier4 参照）。
+    """
     outdir = Path(outdir)
+    _guard_frozen(
+        [outdir / "tier4_protocol_a.tex", outdir / "tier4_lolo.tex"],
+        writer_id=writer_id,
+    )
     outdir.mkdir(parents=True, exist_ok=True)
 
     present = list(dict.fromkeys(results["method"].tolist()))
@@ -773,14 +792,16 @@ def run_tier4(
         written["lolo_summary"] = p
         diag = pd.concat([pa_diag, lolo_diag], ignore_index=True)
 
-        fig_paths = make_figures_tier4(lolo_ledger, figures_dir)
+        fig_paths = make_figures_tier4(lolo_ledger, figures_dir, writer_id=writer_id)
         written["figure"] = fig_paths[0]
 
     p = output_dir / "diagnostics.csv"
     diag.to_csv(p, index=False)
     written["diagnostics"] = p
 
-    tex_paths = make_tex_tables_tier4(results, lolo_summary, references, tables_dir)
+    tex_paths = make_tex_tables_tier4(
+        results, lolo_summary, references, tables_dir, writer_id=writer_id
+    )
     written["tex_protocol_a"] = tex_paths[0]
     written["tex_lolo"] = tex_paths[1]
 

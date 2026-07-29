@@ -31,7 +31,7 @@ import pandas as pd
 from icsr8.constants import RANDOM_SEED
 from icsr8.fingerprint import ap_band_fingerprint
 from icsr8.harness import make_figures, make_tex_tables, run_lolo, run_protocol_a
-from icsr8.harness_tier4 import REFERENCE_METHODS, TIER4_METHODS, _guard_frozen, run_tier4
+from icsr8.harness_tier4 import REFERENCE_METHODS, TIER4_METHODS, run_tier4
 from icsr8.io import load_ap_coords, load_location_coords, load_raw_scans
 from icsr8.methods import REGISTRY
 
@@ -80,6 +80,14 @@ def _load_data(data_root: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
 
 
 def _diag_rows(method: str, values: dict[str, object]) -> list[dict]:
+    """1 手法分の {key: value} を `results/method_diagnostics.csv` の
+    long-form 行（method/key/value）へ展開する小さな整形ヘルパー。
+
+    診断値は手法ごとにキー集合が異なる（wknn は selected_k、gp_corridor は
+    fallback_count 等）ため、wide 形式だと大半のセルが空になる。long-form に
+    統一しておけば `_write_method_diagnostics` が手法を跨いで単純に concat
+    できる。
+    """
     return [{"method": method, "key": k, "value": v} for k, v in values.items()]
 
 
@@ -150,30 +158,16 @@ def regenerate_main_body() -> None:
 
     このモジュールが `icsr8.report.regenerate_main_body` として
     `harness_tier4._SANCTIONED_WRITERS` に登録された sanctioned writer。
-    書き込み前に `_guard_frozen` を通し、対象パスが凍結対象と一致していても
-    この writer_id なら通る（他の呼び出し元は reject される）。
+    `_guard_frozen` は 2026-07-29 以降 `harness.make_figures` /
+    `harness.make_tex_tables` 自身の冒頭に押し下げられている（Codex review
+    finding 1）ため、この関数は `writer_id=_WRITER_MAIN_BODY` をそれらへ渡す
+    だけでよい。
     """
     scans_f, scans_b, ap13, truth = _load_data(_REPO_ROOT / "data")
 
     output_dir = _REPO_ROOT / "results"
     tables_dir = _REPO_ROOT / "doc" / "final_report" / "tables"
     figures_dir = _REPO_ROOT / "doc" / "final_report" / "figures"
-
-    # harness.make_figures/make_tex_tables 自体は凍結ガードを持たない（harness.py
-    # は本文評価の唯一の書き手だった歴史的経緯でガード不要だった）。allowlist 化に
-    # 伴い、実際に凍結対象へ触れるのはこの呼び出し元だけになったので、ここで
-    # 明示的にガードする。
-    _guard_frozen(
-        [
-            tables_dir / "protocol_a.tex",
-            tables_dir / "lolo.tex",
-            figures_dir / "cdf_protocol_a_forward_to_backward.pdf",
-            figures_dir / "cdf_protocol_a_backward_to_forward.pdf",
-            figures_dir / "cdf_lolo.pdf",
-            figures_dir / "segment_heatmap.pdf",
-        ],
-        writer_id=_WRITER_MAIN_BODY,
-    )
 
     methods = list(MAIN_BODY_METHODS)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -190,8 +184,10 @@ def regenerate_main_body() -> None:
     lolo_ledger.to_csv(output_dir / "lolo_ledger.csv", index=False)
     lolo_summary.to_csv(output_dir / "lolo_summary.csv", index=False)
 
-    make_figures({"protocol_a": pa_ledgers, "lolo": lolo_ledger}, figures_dir)
-    make_tex_tables(results, lolo_summary, tables_dir)
+    make_figures(
+        {"protocol_a": pa_ledgers, "lolo": lolo_ledger}, figures_dir, writer_id=_WRITER_MAIN_BODY
+    )
+    make_tex_tables(results, lolo_summary, tables_dir, writer_id=_WRITER_MAIN_BODY)
 
     _write_method_diagnostics(scans_f, ap13, truth)
 

@@ -36,6 +36,13 @@ SMOKE_N_LOC = 9
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """`--methods`/`--output`/`--tables-dir`/`--figures-dir` を全て required にする。
+
+    この CLI は sanctioned writer ではないので、どれか 1 つでも省略できると
+    「意図せず既定のディレクトリへ書いてしまう」余地が argparse レベルで
+    残ってしまう（2026-07-14 contamination incident と同じ形の事故）。required
+    化はその余地そのものを消す構造的な防御であり、実行時チェックではない。
+    """
     p = argparse.ArgumentParser(
         description="icsR8 experimental Tier 4 evaluation（追試・新手法専用、隔離出力）"
     )
@@ -54,6 +61,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """追試・新手法・配管確認用の Tier 4 評価を実行し、指定した隔離出力先へのみ書く。
+
+    `run_tier4()` に writer_id を渡さないため、`--tables-dir`/`--figures-dir` に
+    凍結ディレクトリ（doc/final_report 配下）を指定すると `_guard_frozen` が
+    ValueError で拒否する契約を、この CLI の呼び出し側では一切迂回しない。
+    """
     args = _parse_args(argv)
 
     root = Path(args.dataset_root)

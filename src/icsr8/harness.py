@@ -292,16 +292,44 @@ def run_lolo(
 
 # --- 図 ----------------------------------------------------------------------
 
-def make_figures(ledgers: dict[str, pd.DataFrame], outdir: str | Path) -> list[Path]:
+def make_figures(
+    ledgers: dict[str, pd.DataFrame], outdir: str | Path, *, writer_id: str | None = None
+) -> list[Path]:
     """CDF（Protocol-A fold ごと + LOLO）と segment 別ヒートマップを PDF 出力する。
 
     `ledgers` は {"protocol_a": 長形式台帳, "lolo": 長形式台帳} の dict。
     各台帳は [method, error, true_x, true_y] を含むこと（Protocol-A は fold 列も）。
     生成した PDF パスのリストを返す。
+
+    2026-07-29 allowlist 押し下げ: 本関数は凍結対象 PDF 4 本（main body 分。
+    `cdf_protocol_a_forward_to_backward.pdf` / `cdf_protocol_a_backward_to_forward.pdf`
+    は Protocol-A の 2 fold 名を literal 化したもの — ledger の実際の fold 集合
+    ではなく `harness_tier4.FROZEN_OUTPUT_PATHS` と同期させた固定名の superset
+    として列挙する）を直接書ける唯一の書き手候補になる。以前は
+    `icsr8.report.regenerate_main_body()` が呼び出し側でこの関数を包んで
+    ガードしていたが、それでは harness.py を直接 import して呼ぶ経路が
+    無防備だった（Codex review finding 1）。`writer_id` を渡さない呼び出しは
+    凍結ディレクトリへ書けない。
     """
-    import matplotlib.pyplot as plt
+    # Why not top-level import: harness_tier4.py が `from icsr8.harness import
+    # _get_methods_module` を持つため、モジュール先頭で逆向きに import すると
+    # ロード順序次第で ImportError になる循環 import が生じる。呼び出し時点
+    # では両モジュールが完全ロード済みなので、関数内 import なら安全。
+    from icsr8.harness_tier4 import _guard_frozen  # noqa: PLC0415
 
     outdir = Path(outdir)
+    _guard_frozen(
+        [
+            outdir / "cdf_protocol_a_forward_to_backward.pdf",
+            outdir / "cdf_protocol_a_backward_to_forward.pdf",
+            outdir / "cdf_lolo.pdf",
+            outdir / "segment_heatmap.pdf",
+        ],
+        writer_id=writer_id,
+    )
+
+    import matplotlib.pyplot as plt
+
     outdir.mkdir(parents=True, exist_ok=True)
     created: list[Path] = []
 
@@ -397,13 +425,24 @@ def make_tex_tables(
     results: pd.DataFrame,
     lolo_summary: pd.DataFrame | None,
     outdir: str | Path,
+    *,
+    writer_id: str | None = None,
 ) -> list[Path]:
     """booktabs 風の tabular 断片（\\documentclass 無し）を 2 つ書き出す。
 
     行は LOLO ave 昇順に並べる（LOLO が無ければ Protocol-A ave 昇順に退避）。
     数値は %.2f。wcl_powerdomain 行には短剣符 †（数学的に WCL と等価）を付す。
+
+    2026-07-29 allowlist 押し下げ: 凍結対象 TeX 2 本
+    （`protocol_a.tex` / `lolo.tex`）を直接書ける唯一の書き手候補になる
+    （Codex review finding 1。詳細は make_figures の docstring 参照）。
     """
+    from icsr8.harness_tier4 import _guard_frozen  # noqa: PLC0415 - 循環 import 回避
+
     outdir = Path(outdir)
+    _guard_frozen(
+        [outdir / "protocol_a.tex", outdir / "lolo.tex"], writer_id=writer_id
+    )
     outdir.mkdir(parents=True, exist_ok=True)
 
     order = _method_order_by_lolo(results, lolo_summary)

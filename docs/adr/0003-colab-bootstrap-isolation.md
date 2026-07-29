@@ -1,6 +1,6 @@
 # ADR 0003: Colab bootstrap の隔離設計（パッケージ外配置・compile/exec・read-only Drive）
 
-- Status: Accepted
+- Status: Accepted (partially superseded by ADR-0004)
 - Date: 2026-07-28
 
 ## Context
@@ -161,3 +161,39 @@ bootstrap 自体が icsr8 に依存できない。
     このため Amendment 13 の skip は「スタブ模擬テストとしての検証力」は
     維持するが、**実 Colab 上での source 不変性の機械的証明はこの 2 点の
     分だけ弱い**ことを明記する。
+
+## Amendment (2026-07-29): partial supersession by ADR-0004
+
+以下の decision は ADR-0004 で置き換えられた:
+- `run_all_methods_argv` / `run_tier4_argv` argv ヘルパー: 削除（deep module 化
+  により Python API 直呼びで置き換え）
+- `MAIN_BODY_METHODS` / `TIER4_METHODS` mirror literal: 削除
+  （`icsr8.report.MAIN_BODY_METHODS` / `APPENDIX_A_METHODS` を single source of
+  truth に集約）
+- Isolated output dir 定数 6 本: 削除（staged working copy への直接 regen を
+  許容する運用に変更）
+- gitignore された `results/**/*.csv`: git 管理に復帰（fresh clone で notebook
+  validation が動くよう）
+
+以下の decision は ADR-0004 でも維持される:
+- Drive read-only + working copy staging
+- `PROTECTED_PATHS` による staging 保護
+- `ICSR8_REPO_SOURCE` env override
+- 3-sentinel repo detection
+
+## Amendment (2026-07-30): staged-integrity 除外を doc/final_report/{tables,figures} へ拡張
+
+Amendment 11（`results/` を staged-integrity 検査から除外）と同じ理由で、
+`doc/final_report/tables/` と `doc/final_report/figures/` も除外対象に加えた
+（Codex review finding 3）。ADR-0004 の `regenerate_main_body()` /
+`regenerate_appendix_a()` は sanctioned writer として staged 作業コピー上の
+この 2 ディレクトリを正規動作で書き換えるため、`results/` だけを除外していた
+旧実装では regen 直後の 2 回目の `bootstrap()` 呼び出しで「staged tree が
+source と一致しない」という誤検出が起き、作業コピーが `.old-*` へ退避され
+生成物ごと失われていた（`results/tier4/run_tier4.log` で起きたのと同種の
+事故）。`doc/final_report/main.tex` 等（tables/figures 以外の tracked
+ファイル、`PROTECTED_PATHS` 参照）は regen パイプラインが触らないため
+引き続き検査対象のまま — 除外はディレクトリ単位ではなく
+`results/` / `doc/final_report/tables/` / `doc/final_report/figures/` という
+3 プレフィックスに限定する（`scripts/colab_bootstrap.py::stage_working_copy`
+の `_PIPELINE_OWNED_PREFIXES` 参照）。

@@ -224,6 +224,16 @@ Colab に `uv` は入っていない。`!python` （素の python 実行）で�
 行数・地点サブセットが full と異なるため、notebook の数値照合セル
 （公表値・凍結成果物との一致確認）には使えない——配管確認専用。
 
+**regen 後に次の notebook を開いても作業コピーは作り直されない**:
+`regenerate_main_body.py` / `regenerate_appendix_a.py` は staged 作業コピー
+（`/content` 上）の `doc/final_report/{tables,figures}` を直接書き換える。
+`colab_bootstrap.stage_working_copy()` の再利用時整合性検査は、この 2
+ディレクトリ（`results/` と同様にパイプライン所有領域）を検査対象から除外する
+（2026-07-30 修正。以前は除外が `results/` のみだったため、regen 直後に別の
+notebook を Run All すると「staged tree が Drive 上の source と一致しない」と
+誤判定され、作業コピーが `.old-*` へ退避されて生成物ごと失われていた）。
+`doc/final_report/main.tex` 等（tables/figures 以外）は引き続き検査対象。
+
 ## 4. LaTeX ビルド（Colab 上の TeXLive）
 
 ### TeXLive 一式の導入

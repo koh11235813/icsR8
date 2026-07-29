@@ -11,6 +11,7 @@ Why not import: スキーマを二重に持つことで、harness 側の
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -152,3 +153,43 @@ def test_make_tex_tables_creates_fragments(protocol_a_run, lolo_run, tmp_path):
     assert r"\begin{tabular}" in proto_tex
     for method in SMOKE_METHODS:
         assert method in proto_tex
+
+
+# --- allowlist 押し下げ（Codex review finding 1）-----------------------------
+#
+# make_figures/make_tex_tables 自体が凍結ガードを持つことを、実 repo_root の
+# 凍結ディレクトリを対象に検証する。harness.py を直接 import して呼ぶ経路
+# （report.py の sanctioned wrapper を経由しない）が無防備でないことの証拠。
+# writer_id を渡さなければ ValueError で reject され、凍結ファイルの sha256 も
+# 不変であることまで確認する（「例外は出たが実は途中まで書いていた」を排除）。
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def test_make_figures_refuses_frozen_output(repo_root):
+    figures_dir = repo_root / "doc" / "final_report" / "figures"
+    sentinels = [
+        figures_dir / "cdf_protocol_a_forward_to_backward.pdf",
+        figures_dir / "cdf_protocol_a_backward_to_forward.pdf",
+        figures_dir / "cdf_lolo.pdf",
+        figures_dir / "segment_heatmap.pdf",
+    ]
+    before = {p: _sha(p) for p in sentinels}
+
+    with pytest.raises(ValueError, match="frozen"):
+        make_figures({}, figures_dir)
+
+    assert {p: _sha(p) for p in sentinels} == before
+
+
+def test_make_tex_tables_refuses_frozen_output(repo_root):
+    tables_dir = repo_root / "doc" / "final_report" / "tables"
+    sentinels = [tables_dir / "protocol_a.tex", tables_dir / "lolo.tex"]
+    before = {p: _sha(p) for p in sentinels}
+
+    with pytest.raises(ValueError, match="frozen"):
+        make_tex_tables(pd.DataFrame(columns=["method", "fold"]), None, tables_dir)
+
+    assert {p: _sha(p) for p in sentinels} == before

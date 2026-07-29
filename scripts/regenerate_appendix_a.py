@@ -15,6 +15,11 @@ from icsr8.report import regenerate_appendix_a
 
 
 def main() -> int:
+    """引数を一切受け取らない薄い CLI エントリポイント。
+
+    追試・新手法用の隔離出力（run_experimental_tier4.py）と役割を分けるため、
+    出力先を選べる引数を意図的に持たない。
+    """
     regenerate_appendix_a()
     return 0
 

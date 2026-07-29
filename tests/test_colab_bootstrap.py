@@ -748,6 +748,52 @@ def test_stage_reuse_tolerates_derived_files_added_to_staged_tree(fake_source, t
     assert (workdir / "results" / "protocol_a.csv").is_file()  # 派生物は消されない
 
 
+def test_stage_reuse_tolerates_regenerated_report_tables_and_figures(tmp_path, cb):
+    """staged 側の doc/final_report/{tables,figures} がパイプライン実行で
+    上書きされても reuse を妨げない（doc/final_report 直下の main.tex 等は
+    引き続き検査対象）。
+
+    2026-07-30 Codex review finding 3 対応: docs/COLAB.md の regen 手順は
+    `regenerate_main_body.py` / `regenerate_appendix_a.py`（sanctioned writer）を
+    staged 作業コピー上で直接実行する。旧実装は results/ 以外を検査対象に
+    含めていたため、regen 直後の 2 回目の bootstrap 呼び出しで
+    「staged tree が source と一致しない」という誤検出が起きていた
+    （tables/figures は sanctioned writer の正規動作で変わるのが前提）。
+    """
+    source = _make_fake_repo(
+        tmp_path / "source",
+        extra_files={
+            "doc/final_report/tables/protocol_a.tex": "orig-table\n",
+            "doc/final_report/figures/cdf_lolo.pdf": "orig-pdf\n",
+            "doc/final_report/main.tex": "orig-main\n",
+        },
+    )
+    workdir = tmp_path / "work"
+    cb.stage_working_copy(source, workdir)
+
+    # sanctioned writer（regenerate_main_body 等）による正規の書き換えを模擬
+    (workdir / "doc" / "final_report" / "tables" / "protocol_a.tex").write_text(
+        "regenerated-table\n", encoding="utf-8"
+    )
+    (workdir / "doc" / "final_report" / "figures" / "cdf_lolo.pdf").write_text(
+        "regenerated-pdf\n", encoding="utf-8"
+    )
+
+    result = cb.stage_working_copy(source, workdir)
+
+    assert result == workdir
+    assert _old_backups(workdir) == []  # reuse であって restage ではない
+    assert (workdir / "doc" / "final_report" / "tables" / "protocol_a.tex").read_text(
+        encoding="utf-8"
+    ) == "regenerated-table\n"
+
+    # doc/final_report/tables・figures 以外（main.tex 等）の改変は引き続き拒否
+    # されること（除外が tables/figures に限定される回帰確認）。
+    (workdir / "doc" / "final_report" / "main.tex").write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="整合性検査に失敗"):
+        cb.stage_working_copy(source, workdir)
+
+
 def test_stage_reuse_tolerates_pipeline_mutated_tracked_results(fake_source, tmp_path, cb):
     """source 側に tracked な results/ 配下ファイル（例: run_tier4.log）が
     ある状態で、staged 側のそれがパイプライン実行で上書きされても reuse を

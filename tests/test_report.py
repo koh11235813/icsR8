@@ -3,13 +3,16 @@
 sanctioned writer が凍結パスへ実際に書けることの e2e 相当検証は
 tests/test_harness_tier4.py::test_regenerate_main_body_writes_frozen_paths が
 既に持つ（_guard_frozen を本物のまま・real repo root で通す構成）。ここでは
-それと重複しない 2 つの契約に絞る:
+それと重複しない 3 つの契約に絞る:
 
 1. MAIN_BODY_METHODS / APPENDIX_A_METHODS の形（個数・重複無し・registry 登録済み）
-2. regenerate_main_body() が正しい引数（methods リスト・seed）で
-   run_protocol_a/run_lolo/_write_method_diagnostics を呼ぶこと（orchestration の
-   配線ミス — 例えば method リストを渡し忘れる・順序を混同する、といった
-   誤りを検出する）
+2. regenerate_main_body() が正しい引数（methods リスト・seed・writer_id）で
+   run_protocol_a/run_lolo/make_figures/make_tex_tables/
+   _write_method_diagnostics を呼ぶこと（orchestration の配線ミス — 例えば
+   method リストを渡し忘れる・順序を混同する・writer_id を渡し忘れる、
+   といった誤りを検出する）
+3. regenerate_appendix_a() が run_tier4() へ正しい引数（methods・references・
+   出力先 3 ディレクトリ・seed・B・writer_id）で配線されていること
 """
 
 from __future__ import annotations
@@ -80,10 +83,12 @@ def test_regenerate_main_body_smoke(monkeypatch):
 
     def _fake_make_figures(*args, **kwargs):
         captured["make_figures_called"] = True
+        captured["make_figures_writer_id"] = kwargs.get("writer_id")
         return []
 
     def _fake_make_tex_tables(*args, **kwargs):
         captured["make_tex_tables_called"] = True
+        captured["make_tex_tables_writer_id"] = kwargs.get("writer_id")
         return []
 
     def _fake_write_diag(scans_f, ap13, truth):
@@ -106,3 +111,37 @@ def test_regenerate_main_body_smoke(monkeypatch):
     assert captured["make_figures_called"]
     assert captured["make_tex_tables_called"]
     assert captured["write_diagnostics_called"]
+    # Codex review finding 1（allowlist 押し下げ）: make_figures/make_tex_tables
+    # 自身が凍結ガードを持つようになったので、regenerate_main_body() が
+    # sanctioned writer 識別子を正しく渡していることも配線契約に含める。
+    assert captured["make_figures_writer_id"] == "icsr8.report.regenerate_main_body"
+    assert captured["make_tex_tables_writer_id"] == "icsr8.report.regenerate_main_body"
+
+
+def test_regenerate_appendix_a_wiring(monkeypatch):
+    """regenerate_appendix_a() の配線を検証する unit test（実 sweep は回さない）。
+
+    report.py は `from icsr8.harness_tier4 import ... run_tier4` で名前を束縛
+    しているため、icsr8.harness_tier4 側を monkeypatch しても report モジュール
+    内の呼び出しには反映されない（test_regenerate_main_body_smoke と同じ理由）。
+    report モジュールの `run_tier4` 属性を直接差し替えて配線だけを検証する。
+    """
+    captured: dict = {}
+
+    def _fake_run_tier4(**kwargs):
+        captured.update(kwargs)
+        return {}
+
+    monkeypatch.setattr(report, "_load_data", lambda data_root: (None, None, None, None))
+    monkeypatch.setattr(report, "run_tier4", _fake_run_tier4)
+
+    report.regenerate_appendix_a()
+
+    assert captured["methods"] == list(report.APPENDIX_A_METHODS)
+    assert captured["references"] == report.REFERENCE_METHODS
+    assert captured["output_dir"] == report._REPO_ROOT / "results" / "tier4"
+    assert captured["tables_dir"] == report._REPO_ROOT / "doc" / "final_report" / "tables"
+    assert captured["figures_dir"] == report._REPO_ROOT / "doc" / "final_report" / "figures"
+    assert captured["seed"] == RANDOM_SEED
+    assert captured["B"] == 1000
+    assert captured["writer_id"] == "icsr8.report.regenerate_appendix_a"

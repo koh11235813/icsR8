@@ -1,16 +1,21 @@
-"""最終報告の整合性検証（表数値・参照パス）。
+"""最終報告の整合性検証（表数値・参照パス・図 PDF）。
 
 results/*.csv の各セルを表生成器と同一の関数（icsr8.harness の _label/_fmt/
 _tex_escape）で再フォーマットし、doc/final_report/tables/*.tex の各行を byte 単位で
 再構成できることを確認する。加えて main.tex の \\input / \\includegraphics 先が全て
-実在することを確かめる。全て通れば exit 0、1 つでも失敗すれば exit 1。
+実在すること、凍結図 PDF 5 本の sha256 が `scripts/frozen_pdf_hashes.json` と
+一致することを確かめる。全て通れば exit 0、1 つでも失敗すれば exit 1。
 
 使用例:
     uv run python scripts/verify_report.py
+    uv run python scripts/verify_report.py --skip-pdf-hash  # Linux 等 non-Mac 開発時
 """
 
 from __future__ import annotations
 
+import argparse
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -21,15 +26,32 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 
 try:
-    from icsr8.harness import _POWERDOMAIN_NOTE, _fmt, _label, _tex_escape
+    from icsr8.harness import (
+        _lolo_tex,
+        _method_order_by_lolo,
+        _POWERDOMAIN_NOTE,
+        _fmt,
+        _label,
+        _protocol_a_tex,
+        _tex_escape,
+    )
 except ImportError:  # editable install 未実施でも動くよう src を通す
     sys.path.insert(0, str(ROOT / "src"))
-    from icsr8.harness import _POWERDOMAIN_NOTE, _fmt, _label, _tex_escape
+    from icsr8.harness import (
+        _lolo_tex,
+        _method_order_by_lolo,
+        _POWERDOMAIN_NOTE,
+        _fmt,
+        _label,
+        _protocol_a_tex,
+        _tex_escape,
+    )
 
 REPORT_DIR = ROOT / "doc" / "final_report"
 MAIN_TEX = REPORT_DIR / "main.tex"
 DIAGNOSTICS_CSV = ROOT / "results" / "method_diagnostics.csv"
 TIER4_DIR = ROOT / "results" / "tier4"
+FROZEN_PDF_HASHES_JSON = ROOT / "scripts" / "frozen_pdf_hashes.json"
 
 # (header, csv-column) — harness の _protocol_a_tex / _lolo_tex と同一順序。
 PROTO_COLS = ["ave", "median", "p90", "max", "within_2m", "delta_vs_wcl"]
@@ -98,6 +120,75 @@ def verify_table(csv_path: Path, tex_path: Path, line_fn) -> None:
         note = _POWERDOMAIN_NOTE.strip()
         got = [ln.strip() for ln in tex_path.read_text(encoding="utf-8").splitlines()]
         check(note in got, f"{tex_path.name}: powerdomain † 脚注が無い")
+
+
+def verify_main_body_bytes() -> None:
+    """本文表 TeX 2 本（protocol_a.tex / lolo.tex）が CSV から byte 単位で
+    再構成できることを検証する（verify_table の行セット検査より厳密）。
+
+    `harness.make_tex_tables` は `order = _method_order_by_lolo(results,
+    lolo_summary)` を **1 回だけ** 計算し、`_protocol_a_tex` / `_lolo_tex` の
+    両方に同じ順序を渡す。ここで順序を表ごとに別々に計算すると、行順が
+    生成器と食い違って誤検出になりうる（verify_tier4 の実装と同じ落とし穴）。
+    Why not verify_table の代替: 行セット検査は「どの行が違うか」を教えてくれる
+    診断力があるため両方とも残す（前者は粗い gate、これは厳密な gate）。
+    """
+    proto_csv = ROOT / "results" / "protocol_a.csv"
+    lolo_csv = ROOT / "results" / "lolo_summary.csv"
+    if not (proto_csv.exists() and lolo_csv.exists()):
+        failures.append("protocol_a.csv / lolo_summary.csv: CSV が存在しない")
+        return
+
+    results = pd.read_csv(proto_csv)
+    lolo_summary = pd.read_csv(lolo_csv)
+    order = _method_order_by_lolo(results, lolo_summary)
+
+    expected_proto = _protocol_a_tex(results, order)
+    got_proto = (REPORT_DIR / "tables" / "protocol_a.tex").read_text(encoding="utf-8")
+    check(expected_proto == got_proto, "protocol_a.tex: CSV からの再構成と不一致（byte 比較）")
+
+    expected_lolo = _lolo_tex(lolo_summary, order)
+    got_lolo = (REPORT_DIR / "tables" / "lolo.tex").read_text(encoding="utf-8")
+    check(expected_lolo == got_lolo, "lolo.tex: CSV からの再構成と不一致（byte 比較）")
+
+
+def verify_pdf_hashes(*, skip: bool = False) -> None:
+    """凍結図 PDF 5 本の sha256 が `scripts/frozen_pdf_hashes.json` と一致するか検証する。
+
+    2026-07-29 Codex review finding 2 対応。この検査は「commit 済みの PDF が
+    hand-edit や意図しない再生成で変わっていないか」の tripwire であり、
+    「Mac 上で図 PDF が byte 再現可能」という主張ではない —
+    `harness._plot_cdf` / `_plot_segment_heatmap` は savefig に
+    metadata={"CreationDate": None} を渡していない（凍結中の harness.py は
+    数値以外の理由で編集できないため）ので、main body 図 4 本
+    （cdf_lolo.pdf・cdf_protocol_a_*.pdf 2 本・segment_heatmap.pdf）は
+    再生成のたびに CreationDate が変わり同一 Mac 上でも byte 一致しない
+    （`cdf_lolo_tier4.pdf` のみ `_plot_cdf_tier4` が metadata を落としているため
+    決定的）。したがって `regenerate_main_body.py` を正当に再実行した後は、
+    この json を意図的な reviewed act として re-pin する必要がある
+    （CLAUDE.md §1 参照）。
+
+    `--skip-pdf-hash`（`skip=True`）は Linux 等 non-Mac 開発環境向けの
+    エスケープハッチ。既定は常に検査する（README の Mac 前提運用と整合）。
+    """
+    if skip:
+        print("[verify_report] pdf hash 検査は --skip-pdf-hash によりスキップ")
+        return
+    if not FROZEN_PDF_HASHES_JSON.exists():
+        failures.append(f"{FROZEN_PDF_HASHES_JSON.name}: hash 一覧 json が存在しない")
+        return
+    entries = json.loads(FROZEN_PDF_HASHES_JSON.read_text(encoding="utf-8"))
+    for entry in entries:
+        p = ROOT / entry["path"]
+        if not p.exists():
+            failures.append(f"{entry['path']}: ファイルが存在しない")
+            continue
+        got = hashlib.sha256(p.read_bytes()).hexdigest()
+        check(
+            got == entry["sha256"],
+            f"{entry['path']}: sha256 不一致 (期待 {entry['sha256'][:12]}… / "
+            f"実際 {got[:12]}…) — hand-edit か、再生成後の re-pin 忘れの可能性",
+        )
 
 
 def verify_diagnostics() -> None:
@@ -237,11 +328,25 @@ def verify_tier4() -> None:
               "tier4_*.tex が CSV と一致。")
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--skip-pdf-hash",
+        action="store_true",
+        help="凍結図 PDF 5 本の sha256 検査をスキップする（Linux 等 non-Mac 開発時のみ）",
+    )
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+
     verify_table(ROOT / "results" / "protocol_a.csv",
                  REPORT_DIR / "tables" / "protocol_a.tex", _proto_line)
     verify_table(ROOT / "results" / "lolo_summary.csv",
                  REPORT_DIR / "tables" / "lolo.tex", _lolo_line)
+    verify_main_body_bytes()
+    verify_pdf_hashes(skip=args.skip_pdf_hash)
     verify_paths()
     verify_diagnostics()
     verify_tier4()
@@ -251,8 +356,8 @@ def main() -> int:
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("[verify_report] OK: 表数値 (protocol_a 30 行 / lolo 15 行)、"
-          "診断値 (method_diagnostics.csv) と "
+    print("[verify_report] OK: 表数値 (protocol_a 30 行 / lolo 15 行、byte 一致)、"
+          "診断値 (method_diagnostics.csv)、図 PDF 5 本の sha256 pinning と "
           "main.tex の \\input/\\includegraphics 参照が全て整合。")
     return 0
 

@@ -533,13 +533,14 @@ A.5  Limitations
 ----------------------------------------------------------------------
 
 1. uv sync で依存を解決．
-2. uv run pytest（364 テスト）が全て通ることを確認．
-3. uv run python scripts/run_all_methods.py --methods 〈本文 15 手法名〉で
-   CSV・図・TeX 断片を再生成（--methods を省略すると登録済み Tier 4 手法
-   まで掃引し本文成果物を上書きするため不可．Tier 4 は
-   scripts/run_tier4.py で別系統に再生成）．
-4. uv run python scripts/dump_method_diagnostics.py で
-   results/method_diagnostics.csv（§3 引用値の根拠）を再生成．
+2. uv run pytest（515 テスト）が全て通ることを確認．
+3. uv run python scripts/regenerate_main_body.py で本文 15 手法の
+   CSV・図・TeX 断片（および results/method_diagnostics.csv，§3 引用値の
+   根拠）を再生成．引数を取らない sanctioned writer であり，旧
+   run_all_methods.py --methods〈手法名〉の打ち間違いで Tier 4 手法まで
+   巻き込む事故は構造的に起こり得ない．
+4. uv run python scripts/regenerate_appendix_a.py で付録 A（Tier 4，
+   7 手法）の CSV・図・TeX 断片を再生成．
 5. (cd doc/final_report && latexmk -lualatex main.tex) で本 PDF をビルド．
 6. リポジトリルートで uv run python scripts/verify_report.py を実行し，
    表数値・診断値・参照パスの整合を検証．

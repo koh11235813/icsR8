@@ -16,7 +16,7 @@ LOLO 評価で平均誤差 **0.72 m** (≤2 m 率 90%) を達成し、目標の 
 ├── src/icsr8/            推定ライブラリ本体（詳細は「モジュール構成」）
 │   └── methods/          手法レジストリ（1 ファイル = 1 手法）
 ├── scripts/              評価・検証・再生成の CLI
-├── tests/                pytest（509 テスト。公表値再現・リーク契約・凍結ガード含む）
+├── tests/                pytest（515 テスト。公表値再現・リーク契約・凍結ガード含む）
 ├── data/                 測定データ（*.zip が原本。展開ディレクトリは直接編集しない）
 ├── doc/
 │   ├── final_report/     最終報告書 (LuaLaTeX)。tables/ と figures/ は生成物
@@ -64,8 +64,23 @@ allowlist に登録された 2 関数）だけ。他のあらゆる呼び出し�
 
 手編集は禁止。再生成する場合も `scripts/regenerate_main_body.py` /
 `scripts/regenerate_appendix_a.py`（いずれも引数ゼロ）のみを使う。
-表 TeX は `%.2f` を通すため OS 中立で HEAD と byte 一致する想定、
-図 PDF は視覚差なし前提で `076bec5` 以降 git 管理下。
+
+**表 TeX 4 本**: `%.2f` を通すため OS 中立で HEAD と byte 一致する。
+`scripts/verify_report.py` は `results/*.csv` から `icsr8.harness`/
+`icsr8.harness_tier4` の生成関数（`_protocol_a_tex`/`_lolo_tex`/
+`_protocol_tex`/`_lolo_tex`）で TeX を再構成し、コミット済みファイルと
+**完全 byte 一致**することを検証する（行セットの部分一致ではない）。
+
+**図 PDF 5 本**: `scripts/frozen_pdf_hashes.json` に固定した sha256 を
+`verify_report.py` が検査する（`--skip-pdf-hash` で non-Mac 開発環境向けに
+スキップ可）。これは「hand-edit や意図しない再生成で変わっていないか」の
+tripwire であり、**「Mac 上で byte 再現可能」という主張ではない** —
+5 本中 4 本（`cdf_lolo`・`cdf_protocol_a_*` 2 本・`segment_heatmap`）は
+matplotlib の既定 `savefig` が wall-clock `CreationDate` を埋め込むため、
+数値が同一でも再生成のたびに byte が変わる（`cdf_lolo_tier4.pdf` のみ
+`metadata={"CreationDate": None}` を渡しており決定的）。正当な再生成を
+行った場合は、同じコミットで `frozen_pdf_hashes.json` を意図的に
+re-pin すること。
 
 `results/*.csv` は本文値の元になる中間 CSV で git 管理下にあるが、
 Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で ULP レベルにドリフトするため
@@ -121,7 +136,7 @@ uv run python scripts/run_experimental_tier4.py --methods wcl_virtual_ap --smoke
 ### 検証ゲート
 
 ```bash
-uv run pytest                                      # 509 テスト
+uv run pytest                                      # 515 テスト
 uv run python scripts/verify_report.py             # 表数値・診断値・TeX参照パスの整合検証
 ```
 

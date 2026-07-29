@@ -558,6 +558,33 @@ def test_guard_frozen_rejects_unknown_writer_id(repo_root):
         )
 
 
+def test_make_figures_tier4_refuses_frozen_output(repo_root):
+    # Codex review finding 1: make_figures_tier4 自身が凍結ガードを持つことを、
+    # run_tier4() を経由しない直接呼び出しで検証する（押し下げ前は run_tier4()
+    # のガードだけが頼りで、この関数を直接 import して呼ぶ経路が無防備だった）。
+    figures_dir = repo_root / "doc" / "final_report" / "figures"
+    sentinel = figures_dir / "cdf_lolo_tier4.pdf"
+    before = _sha(sentinel)
+
+    with pytest.raises(ValueError, match="frozen"):
+        make_figures_tier4(pd.DataFrame(columns=["method", "error"]), figures_dir)
+
+    assert _sha(sentinel) == before
+
+
+def test_make_tex_tables_tier4_refuses_frozen_output(repo_root):
+    tables_dir = repo_root / "doc" / "final_report" / "tables"
+    sentinels = [tables_dir / "tier4_protocol_a.tex", tables_dir / "tier4_lolo.tex"]
+    before = {p: _sha(p) for p in sentinels}
+
+    with pytest.raises(ValueError, match="frozen"):
+        make_tex_tables_tier4(
+            pd.DataFrame(columns=["method", "fold"]), None, ["wcl"], tables_dir
+        )
+
+    assert {p: _sha(p) for p in sentinels} == before
+
+
 def test_regenerate_main_body_writes_frozen_paths(monkeypatch, repo_root):
     # 2026-07-29: sanctioned writer（icsr8.report.regenerate_main_body）は
     # 凍結パスへの _guard_frozen を通過できることを検証する。report.py は
