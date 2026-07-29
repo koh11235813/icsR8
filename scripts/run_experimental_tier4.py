@@ -3,7 +3,10 @@
 sanctioned writer ではない（icsr8.harness_tier4.run_tier4 へ writer_id を渡さない）
 ため、--tables-dir/--figures-dir が凍結パス（doc/final_report 配下の 9 ファイル、
 harness_tier4.FROZEN_OUTPUT_PATHS）と衝突すれば _guard_frozen が ValueError で
-reject する。--methods/--output/--tables-dir/--figures-dir は全て required —
+reject する（run_tier4 冒頭のガードに加え、2026-07-29 以降は
+make_figures_tier4/make_tex_tables_tier4 自身の冒頭でも同じガードが働く
+belt-and-suspenders — Codex review finding 1）。
+--methods/--output/--tables-dir/--figures-dir は全て required —
 省略時に既定の doc/final_report を汚す事故（2026-07-14 contamination incident）を、
 argparse レベルで構造的に不可能にする。
 

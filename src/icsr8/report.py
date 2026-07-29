@@ -31,7 +31,7 @@ import pandas as pd
 from icsr8.constants import RANDOM_SEED
 from icsr8.fingerprint import ap_band_fingerprint
 from icsr8.harness import make_figures, make_tex_tables, run_lolo, run_protocol_a
-from icsr8.harness_tier4 import REFERENCE_METHODS, TIER4_METHODS, run_tier4
+from icsr8.harness_tier4 import REFERENCE_METHODS, TIER4_METHODS, _guard_frozen, run_tier4
 from icsr8.io import load_ap_coords, load_location_coords, load_raw_scans
 from icsr8.methods import REGISTRY
 
@@ -159,15 +159,30 @@ def regenerate_main_body() -> None:
     このモジュールが `icsr8.report.regenerate_main_body` として
     `harness_tier4._SANCTIONED_WRITERS` に登録された sanctioned writer。
     `_guard_frozen` は 2026-07-29 以降 `harness.make_figures` /
-    `harness.make_tex_tables` 自身の冒頭に押し下げられている（Codex review
-    finding 1）ため、この関数は `writer_id=_WRITER_MAIN_BODY` をそれらへ渡す
-    だけでよい。
+    `harness.make_tex_tables` 自身の冒頭にも押し下げられている（Codex review
+    finding 1）が、この関数自身の冒頭でも同じ判定を先に通す
+    （belt-and-suspenders — `harness_tier4.run_tier4` が既に持つ設計と対称。
+    冒頭で reject すれば、書き込み不可能な呼び出しのために ~8 分の sweep
+    〈`run_protocol_a`/`run_lolo`〉を無駄にせず、`results/*.csv`
+    ―凍結対象ではないが tracked― が中途半端な状態で上書きされることも防げる）。
     """
     scans_f, scans_b, ap13, truth = _load_data(_REPO_ROOT / "data")
 
     output_dir = _REPO_ROOT / "results"
     tables_dir = _REPO_ROOT / "doc" / "final_report" / "tables"
     figures_dir = _REPO_ROOT / "doc" / "final_report" / "figures"
+
+    _guard_frozen(
+        [
+            tables_dir / "protocol_a.tex",
+            tables_dir / "lolo.tex",
+            figures_dir / "cdf_protocol_a_forward_to_backward.pdf",
+            figures_dir / "cdf_protocol_a_backward_to_forward.pdf",
+            figures_dir / "cdf_lolo.pdf",
+            figures_dir / "segment_heatmap.pdf",
+        ],
+        writer_id=_WRITER_MAIN_BODY,
+    )
 
     methods = list(MAIN_BODY_METHODS)
     output_dir.mkdir(parents=True, exist_ok=True)
