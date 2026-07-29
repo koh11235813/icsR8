@@ -1,6 +1,6 @@
 """評価ハーネス（icsr8.harness）の実データスモークテスト。
 
-本命の重い sweep は scripts/run_all_methods.py が担う。ここでは
+本命の重い sweep は scripts/regenerate_main_body.py（icsr8.report）が担う。ここでは
 安定手法 wcl / pbl だけを使い、fold 数を絞った軽量経路で
 CSV スキーマ・行数・delta 契約・成果物ファイル生成を固定する。
 

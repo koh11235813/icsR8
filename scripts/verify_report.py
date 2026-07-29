@@ -37,8 +37,8 @@ LOLO_COLS = ["ave", "median", "p90", "within_2m"]
 
 # main.tex §3 が引用する診断値 (method, key) -> results/method_diagnostics.csv の
 # value 列から main.tex に載るべき部分文字列を作るフォーマッタ。
-# scripts/dump_method_diagnostics.py の出力値が変われば main.tex 側の文言も
-# 追随しているべき、という契約をここで検証する。
+# icsr8.report._write_method_diagnostics（scripts/regenerate_main_body.py 内部）
+# の出力値が変われば main.tex 側の文言も追随しているべき、という契約をここで検証する。
 _DIAG_FORMATTERS = {
     ("wknn", "selected_k"): lambda v: f"K{{=}}{int(float(v))}",
     ("wknn", "selected_weighting"): lambda v: f"weighting={_tex_escape(str(v))}",

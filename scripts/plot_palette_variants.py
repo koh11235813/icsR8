@@ -146,7 +146,7 @@ def main() -> None:
                     default=Path("results/tier4/lolo_ledger.csv"))
     ap.add_argument("--protocol-a-ledger", type=Path,
                     default=Path("results/extra/pa_run/protocol_a_ledger.csv"),
-                    help="run_all_methods.py が書き出す地点別台帳（fold 列を含む）")
+                    help="regenerate_main_body.py が書き出す地点別台帳（fold 列を含む）")
     ap.add_argument("--outdir", type=Path, default=Path("results/extra/palettes"))
     ap.add_argument("--palette", choices=sorted(PALETTES), default=None,
                     help="省略時は全5配色")
@@ -158,7 +158,7 @@ def main() -> None:
     def _load(path: Path, label: str) -> pd.DataFrame | None:
         if path.exists():
             return pd.read_csv(path)
-        print(f"[skip] {label}: {path} が無い（scripts/run_all_methods.py で再生成）")
+        print(f"[skip] {label}: {path} が無い（scripts/regenerate_main_body.py で再生成）")
         return None
 
     lolo = _load(args.ledger, "LOLO")

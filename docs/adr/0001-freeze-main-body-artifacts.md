@@ -1,5 +1,14 @@
 # ADR 0001: 本文成果物の凍結と評価系統の隔離
 
+## Status: Superseded by ADR-0004 (2026-07-29)
+
+凍結ガードは blocklist（`_guard_frozen(targets)`、呼び出し元を問わず対象パスを拒否）
+から allowlist（`_guard_frozen(targets, *, writer_id)`、sanctioned writer だけを
+通す）へ置き換えられた。以下の本文（Context/Decision/Consequences）は
+2026-07-29 時点の実装とズレている箇所があるが、免除されない歴史的記録として
+そのまま残す。現行契約は `docs/adr/0004-deep-module-freeze-invariant.md` と
+README §凍結契約を参照。
+
 - Status: Accepted
 - Date: 2026-07-13（凍結）/ 2026-07-14（ガード整備）/ 2026-07-22（追試系統の追加）
 

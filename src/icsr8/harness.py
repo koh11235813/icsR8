@@ -1,7 +1,8 @@
 """評価ハーネス（Protocol A / LOLO の sweep・図表生成）の import 可能なコア。
 
-scripts/run_all_methods.py は本モジュールの薄い CLI ラッパにすぎない。
-sweep 本体・図・TeX 断片の生成をここに集約し、テスト可能な純関数に保つ。
+icsr8.report.regenerate_main_body() は本モジュールを組み立てる上位の
+sanctioned writer にすぎない。sweep 本体・図・TeX 断片の生成をここに集約し、
+テスト可能な純関数に保つ。
 
 手法一覧は実行時に icsr8.methods.available_methods() から解決する（本モジュールは
 今日の手法名を一切ハードコードしない）。並行開発中は methods/*.py の一部が

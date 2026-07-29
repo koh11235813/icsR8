@@ -8,9 +8,11 @@ E2E 手順。アーキテクチャ上の決定と根拠は
 
 再現の主張は独立 2 本:
 
-- **(a) 数値パイプライン**: `results/colab/tables/*.tex` が tracked な
-  `doc/final_report/tables/*.tex` と diff 一致し、`results/colab/figures/*.pdf`
-  が絶対パスで存在・pypdf で parse できる
+- **(a) 数値パイプライン**: `regenerate_main_body.py` / `regenerate_appendix_a.py`
+  が作業コピー内の `doc/final_report/tables/*.tex` / `figures/*.pdf` へ直接書き、
+  それが tracked な HEAD と diff 一致する（2026-07-29 allowlist 化以降、
+  `results/colab/` への隔離出力は廃止 — sanctioned writer が凍結パス自体へ
+  書く設計になったため、隔離してから比較する中間ステップが不要になった）
 - **(b) LaTeX**: tracked スナップショットが Colab の LuaLaTeX + 和文フォントで
   コンパイルできる
 
@@ -152,60 +154,75 @@ DRIVE_REPO_DIR = "/content/drive/MyDrive/icsR8"  # 置き場所が違うなら�
    _ns["install_cjk_fonts"]()
    ```
 
-## 3. 結果生成（argv ヘルパー経由のみ）
+## 3. 結果生成（引数ゼロの sanctioned writer 経由のみ）
 
-**`run_all_methods.py` / `run_tier4.py` への呼び出しは、常に
-`colab_bootstrap.run_all_methods_argv()` / `run_tier4_argv()` が返す argv を
-そのまま使う。フラグを手で組み立てて渡してはいけない。** 2026-07-14 の
-contamination incident（README/CLAUDE.md 参照）以来、`--methods` の省略や
-手打ちミスは凍結成果物を壊しうる致命的な操作であり、argv ヘルパーは常に
-本文 15 手法・順序込みの literal を明示することでこれを構造的に防ぐ。
+**このセクションは省略可能**: `results/*.csv` は 2026-07-29 以降 git 管理下にあり、
+fresh clone 直後（Drive リポ・ローカル clone のどちらでも）から常に生成済みの
+状態で存在する。`notebooks/tier{1,2,3,4}_methods.ipynb` の数値照合セルは
+これらを読むだけなので、以下の regen コマンドを 1 度も実行しなくても Run All が
+そのまま通る。以下は `results/*.csv` や凍結成果物を明示的に再生成したい場合
+（コード変更を検証する等）のみ必要な手順。
+
+**2026-07-29 allowlist 化**: 旧 `run_all_methods.py` / `run_tier4.py` と、それらの
+argv ヘルパー `colab_bootstrap.run_all_methods_argv()` / `run_tier4_argv()` は
+削除された。凍結成果物へ書けるのは `icsr8.report.regenerate_main_body()` /
+`icsr8.report.regenerate_appendix_a()`（`src/icsr8/report.py`、共に**完全引数
+ゼロ**）だけという allowlist 契約に一本化された（`src/icsr8/harness_tier4.py`
+の `_guard_frozen` / `_SANCTIONED_WRITERS`。詳細は
+`docs/adr/0004-deep-module-freeze-invariant.md`）。引数が無いので
+「`--methods` を打ち間違える」「出力先フラグを省略する」という
+2026-07-14 contamination incident 型の事故はそもそも起こり得ない。
 
 Colab に `uv` は入っていない。`!python` （素の python 実行）で起動し、
 `uv run` は使わない。
 
-### 本文 Tier 1–3（15 手法・full）
+### 本文 Tier 1–3（15 手法 + 診断値・full）
 
-```python
-import subprocess
-
-argv = _ns["run_all_methods_argv"](smoke=False)  # 常に --methods 15 手法・順序込みで明示
-subprocess.run(["python", "scripts/run_all_methods.py", *argv], check=True)
+```bash
+!python scripts/regenerate_main_body.py
 ```
 
-CSV は正規 `results/` へ、表 TeX/図 PDF は凍結ファイルを汚さないよう
-`results/colab/tables`・`results/colab/figures` へ隔離される。
+引数は取らない。CSV・表 TeX・図 PDF・`results/method_diagnostics.csv` は
+すべて正規パス（`results/`・`doc/final_report/{tables,figures}`）へ
+直接書かれる（tracked ファイルと byte 一致するはずなので、旧版のように
+`results/colab/` へ隔離する必要が無くなった）。
 
 ### Tier 4（7 手法・full）
 
-```python
-argv = _ns["run_tier4_argv"](smoke=False)
-subprocess.run(["python", "scripts/run_tier4.py", *argv], check=True)
+```bash
+!python scripts/regenerate_appendix_a.py
 ```
 
-CSV は `results/tier4/`、表 TeX/図 PDF は本文側と同じ
-`results/colab/{tables,figures}` を共有する（basename が `tier4_*.tex` /
-`cdf_lolo_tier4.pdf` で本文側と衝突しないため安全）。
+引数は取らない。CSV は `results/tier4/`、表 TeX/図 PDF は
+`doc/final_report/tables/tier4_*.tex` / `doc/final_report/figures/cdf_lolo_tier4.pdf`
+へ直接書かれる。
 
-### `--smoke` は配管確認専用（照合セルには使えない）
+### 追試・新手法・配管確認（`run_experimental_tier4.py`）
 
-`run_all_methods_argv(smoke=True)` / `run_tier4_argv(smoke=True)` も
-`--methods` に本文 15 手法・Tier4 7 手法を明示するが、これは「argv ヘルパーは
-常に `--methods` を明示する」という契約を smoke でも一貫させるためだけの
-ものである。`run_all_methods.py` の `_resolve_methods`（`run_tier4.py` の
-`main()` も同様）は `args.smoke` を `args.methods` より先に評価するため、
-**実際に実行される手法は `--methods` の中身に関わらず常に代役 2 手法
-（`wcl`, `wcl_corridor`）に固定される**。したがって smoke の出力は
+`regenerate_main_body.py` / `regenerate_appendix_a.py` は sanctioned writer で
+固定 7/15 手法しか回せない。追試・新手法の評価や「パイプラインが最後まで
+例外なく通るか」の配管確認には `scripts/run_experimental_tier4.py` を使う。
+`--methods` / `--output` / `--tables-dir` / `--figures-dir` は全て required
+（省略すると argparse がその場でエラーにする）。この CLI は sanctioned writer
+ではないため、`--tables-dir`/`--figures-dir` に凍結ディレクトリ
+（`doc/final_report/tables` 等）を指定すると `_guard_frozen` が `ValueError`
+で reject する——隔離ディレクトリ以外を指すこと自体が構造的に不可能になっている。
 
-- 実手法数が 2 に絞られている（本文 15 / Tier4 7 とは一致しない）
-- 行数・地点サブセット（`max_folds=3` 等）が full と異なる
+```bash
+!python scripts/run_experimental_tier4.py \
+  --methods wcl_virtual_ap --output results/extra/vwcl \
+  --tables-dir results/extra/vwcl --figures-dir results/extra/vwcl
+# 配管確認（B=100・地点サブサンプル、本文照合には使えない）:
+!python scripts/run_experimental_tier4.py \
+  --methods wcl_virtual_ap --smoke \
+  --output /tmp/smoke --tables-dir /tmp/smoke --figures-dir /tmp/smoke
+```
 
-という理由で、notebook の数値照合セル（公表値・凍結成果物との一致確認）を
-満たせない。smoke は「パイプラインが最後まで例外なく通るか」という
-**配管確認のみ**に使い、smoke の出力を本文照合や凍結ファイルの代わりに
-使ってはならない。出力は 3 チャンネルとも隔離ディレクトリ
-（`results/colab/smoke/main_body/` / `results/colab/smoke/tier4/`）にのみ
-書かれる。
+`--smoke` は B と地点サブサンプルだけを制御し、`--methods` はどちらの場合も
+そのまま使う（旧 `run_tier4.py` は `--smoke` が `--methods` を無条件に上書き
+していたが、required 化に伴いこの footgun は無くした）。smoke 出力は
+行数・地点サブセットが full と異なるため、notebook の数値照合セル
+（公表値・凍結成果物との一致確認）には使えない——配管確認専用。
 
 ## 4. LaTeX ビルド（Colab 上の TeXLive）
 
@@ -276,12 +293,14 @@ apt 管理の TeXLive を使う。**`tlmgr` を混用しない**（apt のパッ
 
 ## 5. 成果物の書き戻し（Drive・リポ外のみ）
 
-生成物（`results/colab/{tables,figures}` の TeX/PDF、
+生成物（`results/`・`doc/final_report/{tables,figures}` の CSV/TeX/PDF、
 `/content/latex_build/{final_report,slides}` の PDF 等）は、**Drive 上の
 リポフォルダの外側**にのみコピーする（例
 `MyDrive/icsR8_colab_output/`）。リポフォルダ自体は read-only 前提であり、
 そこへ生成物を書き戻すと「Drive のリポが実は変更されている」状態になり
-provenance が壊れる。
+provenance が壊れる（ここでいう「リポフォルダ」は Drive 上の source を指す。
+regenerate_main_body.py 等が書くのは `/content` 上の作業コピーであり、
+read-only 前提を破らない — ADR-0003 参照）。
 
 ```python
 import shutil
@@ -290,7 +309,9 @@ from pathlib import Path
 root = Path.cwd()  # セットアップセル実行後の cwd = 作業コピー（§2 参照）
 out = Path("/content/drive/MyDrive/icsR8_colab_output")
 out.mkdir(parents=True, exist_ok=True)
-shutil.copytree(root / "results" / "colab", out / "results_colab", dirs_exist_ok=True)
+shutil.copytree(root / "results", out / "results", dirs_exist_ok=True)
+shutil.copytree(root / "doc" / "final_report" / "tables", out / "tables", dirs_exist_ok=True)
+shutil.copytree(root / "doc" / "final_report" / "figures", out / "figures", dirs_exist_ok=True)
 shutil.copytree(Path("/content/latex_build"), out / "latex_build", dirs_exist_ok=True)
 ```
 
@@ -517,7 +538,9 @@ if _ON_COLAB:  # ここから先は fail-closed（例外はそのまま停止）
   リポ外フォルダへ退避するのが安全。セッションが失われても、正規パスの
   CSV を作業コピーへ書き戻せば notebook の照合セルはそのまま通る。
 - **`verify_report.py` は `results/method_diagnostics.csv` も要求する**。
-  full スイープ後に `!python scripts/dump_method_diagnostics.py` を忘れずに。
+  2026-07-29 以降 `regenerate_main_body.py` が末尾で自動的に書くため、
+  別コマンドを個別に打つ必要は無くなった（旧 `dump_method_diagnostics.py`
+  は削除済み）。
 - **colab-cli（google-colab-cli 0.6.0）利用者向け**: 依存の
   `jupyter-kernel-client` が 1.0.0 で API 破壊（`KernelClient` 廃止）。
   exec が `AttributeError` で全滅する場合は

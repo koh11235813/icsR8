@@ -39,50 +39,48 @@ Separate functions into separate files by type, and do not recreate existing fun
 
 Cautions for changing this repository. Each rule below was codified after an actual (or narrowly avoided) incident; see docs/adr/ for the full history.
 
-## 1. Freeze contract — seven document artifacts you must not touch
+## 1. Freeze contract — nine document artifacts, allowlisted writers only
 
-`doc/final_report/tables/{lolo,protocol_a}.tex` and `doc/final_report/figures/{cdf_lolo,cdf_lolo_tier4,cdf_protocol_a_forward_to_backward,cdf_protocol_a_backward_to_forward,segment_heatmap}.pdf` are the frozen main-body document artifacts. **Never hand-edit or casually regenerate them.** When regeneration is genuinely needed, use only the command in README "Tier ごとの評価手順" with the 15 main-body methods listed explicitly. Table TeX flows through `%.2f` and stays byte-identical to HEAD across OS; figure PDFs are visually invariant despite ULP-level numeric drift and have been versioned since commit `076bec5 add: pdf contents`.
+`doc/final_report/tables/{lolo,protocol_a,tier4_lolo,tier4_protocol_a}.tex` and `doc/final_report/figures/{cdf_lolo,cdf_lolo_tier4,cdf_protocol_a_forward_to_backward,cdf_protocol_a_backward_to_forward,segment_heatmap}.pdf` (6 main-body + 3 Appendix A = 9 files, enumerated verbatim in `src/icsr8/harness_tier4.FROZEN_OUTPUT_PATHS`) are frozen document artifacts. **Never hand-edit or casually regenerate them.**
 
-# 2026-07-29: `results/*.csv` are git-tracked but not part of this byte-identity contract: Mac(Accelerate) ↔ Linux(OpenBLAS) BLAS implementation differences drift them at ULP scale. Document-visible numbers survive the drift because they go through `%.2f`. See `docs/adr/0001-freeze-main-body-artifacts.md` for background and README §凍結契約 for the current state.
+# 2026-07-29 allowlist pivot: enforcement moved from a blocklist (any writer, reject specific paths) to an allowlist keyed on *writer identity*. `harness_tier4._guard_frozen(targets, *, writer_id=None)` raises `ValueError` unless `writer_id` is one of `_SANCTIONED_WRITERS` — currently exactly `icsr8.report.regenerate_main_body` and `icsr8.report.regenerate_appendix_a` (`src/icsr8/report.py`, both zero-argument functions). Every other caller — `scripts/run_experimental_tier4.py`, hand-edits, ad-hoc scripts — passes no writer_id and is rejected structurally, not by convention. The count grew from the pre-pivot 7 (2 TeX + 5 figure PDFs, main-body only) to 9 because Appendix A's `tier4_*.tex` and `cdf_lolo_tier4.pdf` had never been in `FROZEN_OUTPUT_PATHS` at all — they were unguarded by construction, not by oversight, since the old blocklist only ever covered the main-body path. Regenerate with `uv run python scripts/regenerate_main_body.py` / `scripts/regenerate_appendix_a.py` (both take no arguments — there is nothing to mistype). See `docs/adr/0004-deep-module-freeze-invariant.md` for the full rationale and `docs/adr/0001-freeze-main-body-artifacts.md` (Superseded) for the pre-pivot history. Table TeX flows through `%.2f` and stays byte-identical to HEAD across OS; figure PDFs are visually invariant despite ULP-level numeric drift and have been versioned since commit `076bec5 add: pdf contents`.
 
-## 2. Never run `run_all_methods.py` without `--methods`
+# 2026-07-29: `results/*.csv` are git-tracked but not part of this byte-identity contract: Mac(Accelerate) ↔ Linux(OpenBLAS) BLAS implementation differences drift them at ULP scale. Document-visible numbers survive the drift because they go through `%.2f`. See README §凍結契約 for the current state.
 
-# 2026-07-14 contamination incident: the registry auto-discovers `src/icsr8/methods/`, so the moment a new method carries `@register`, an unfiltered run sweeps it too. An unfiltered run leaked the seven Tier 4 methods into the frozen files. Every new method you add makes this landmine **bigger** — do not forget it.
+## 2. Isolated evaluation is structurally non-sanctioned
 
-## 3. Isolated evaluation needs all three output flags
+`scripts/run_experimental_tier4.py --methods <name> --output <dir> --tables-dir <dir> --figures-dir <dir>` evaluates new/experimental methods. **All four flags are `required=True`** — there is no default to accidentally omit, unlike the deleted `run_all_methods.py`/`run_tier4.py` that this replaced (see §1). This CLI never passes a `writer_id` to `run_tier4()`, so even if you point `--tables-dir`/`--figures-dir` at `doc/final_report/tables`, `_guard_frozen` rejects the write with `ValueError` before any file touches disk. Point real runs at a dedicated directory (e.g. `results/extra/<name>/`).
 
-Evaluate new/experimental methods with `run_tier4.py --methods <name> --output <dir> --tables-dir <dir> --figures-dir <dir>`, pointing **all three output channels** at a dedicated directory (e.g. `results/extra/`). If `--tables-dir`/`--figures-dir` are omitted, the run writes into the default `doc/final_report/` and overwrites the committed Appendix-A tables `tier4_*.tex`.
-
-## 4. Always pass both gates after a change
+## 3. Always pass both gates after a change
 
 ```bash
-uv run pytest                           # 520 tests (freeze guard, leak contract, published-value reproduction)
+uv run pytest                           # 509 tests (freeze guard, leak contract, published-value reproduction)
 uv run python scripts/verify_report.py  # byte-level CSV↔TeX reconciliation + main.tex reference-path existence
 ```
 
 Run both no matter what you touched — code, results, or LaTeX. One alone is insufficient (pytest does not check document/table consistency; verify_report does not check behavior).
 
-## 5. Conventions for adding a method
+## 4. Conventions for adding a method
 
 - One module = one method (`src/icsr8/methods/<name>.py`), decorated with `@register`, declaring `name` and `uses_geometry`.
 - Never pass test-side information into `fit`. Leak prevention is structural: `run_method` (`methods/__init__.py`) filters location coordinates to training locations, and the spy test `test_iter_lolo_leakage_contract_spy` pins that contract. Do not write direct calls that bypass this guarantee.
 - For iterative algorithms, the contract is "iterate until converged"; set the cap with generous margin over the observed maximum and leave a dated comment justifying it (# 2026-07-22 vWCL: the paper expects 5–10 iterations, but real data required up to 53).
 - Add property tests plus an end-to-end test through `run_method` in `tests/test_<name>.py`.
 
-## 6. LaTeX contracts
+## 5. LaTeX contracts
 
 - Builds use LuaLaTeX + latexmk (`doc/*/.latexmkrc`). The report is `ltjsarticle[twocolumn]`; the slides are beamer + luatexja. Do not mix in pLaTeX-family classes (ieicej etc.).
 - The path strings of `\input{tables/...}` and `\includegraphics{...figures/...}` inside `doc/final_report/main.tex` are **inspected by verify_report.py**. Restructure sections freely, but do not change a single character of those path strings.
 - Numbers should be `\input` from the table generator's `%.2f` output. When a number appears in prose, it must match the tables/CSVs exactly — never re-round on your own.
 
-## 7. Public-repository placeholders
+## 6. Public-repository placeholders
 
 `[GROUP_NAME]` / `[AUTHOR_NAME]` are placeholders for the public repository. Never commit real names filled in (build the submission PDFs locally with the placeholders replaced).
 
-## 8. Do not break reproducibility
+## 7. Do not break reproducibility
 
 seed=0, bootstrap B=1000, and the deterministic tie-break (rssi_median desc → frequency asc → ssid asc → ap_name asc; the rule that reproduces the five published tie events P19/P30/P35/P43/P49) are the foundation of result identity. Any proposal to change them means the published-value reproduction tests will break.
 
-## 9. Data originals
+## 8. Data originals
 
 `data/*.zip` are the originals. Never edit the extracted directories (`data/dataset/` etc.) directly. Regenerate test fixtures only via `scripts/extract_baseline_fixtures.py`.

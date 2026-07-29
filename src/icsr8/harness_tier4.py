@@ -1,8 +1,10 @@
 """Tier 4 手法群の評価ハーネス（Protocol A / LOLO を別経路で回す）。
 
-既存 harness.py + run_all_methods.py が出力する results/*.csv・doc/final_report の
-表・図は凍結済みなので、Tier 4 の 7 手法はここで独立に評価し results/tier4/ と
-tier4_*.tex にのみ書き出す。scripts/run_tier4.py は本モジュールの薄い CLI。
+既存 harness.py が出力する results/*.csv・doc/final_report の表・図は凍結済みなので、
+Tier 4 の 7 手法はここで独立に評価し results/tier4/ と tier4_*.tex にのみ書き出す。
+sanctioned writer は icsr8.report.regenerate_appendix_a（本モジュールの run_tier4 を
+呼ぶ）。scripts/run_experimental_tier4.py は追試専用の非 sanctioned CLI で、
+凍結パスへ書こうとすると _guard_frozen が reject する。
 
 Why not 既存 harness を拡張する: 既存出力（protocol_a.csv 30 行等）は
 scripts/verify_report.py が main.tex とバイト一致で固定しており、行の増減や
@@ -42,11 +44,32 @@ from icsr8.corridor import segment_of  # noqa: E402
 from icsr8.harness import _get_methods_module  # noqa: E402
 from icsr8.protocols import iter_lolo, iter_protocol_a  # noqa: E402
 
-# --- 凍結成果物ガード ----------------------------------------------------------
+# --- 凍結成果物ガード（allowlist 契約）---------------------------------------
+#
+# 2026-07-29 pivot: 旧契約は「凍結パスへの書き込みは常に拒否」という blocklist
+# だった。これは run_tier4() 経由の書き込みしか守れず、tier4_*.tex・
+# cdf_lolo_tier4.pdf（付録 A 分、7 手法版）は一度も FROZEN_OUTPUT_PATHS に
+# 含まれたことがなく構造的に無防御だった。allowlist 化してこの穴を塞ぐ：
+# 「凍結パスへ書けるのは _SANCTIONED_WRITERS の 2 関数だけ」という契約にすれば、
+# 新しい書き手が増えても writer_id を渡さない限り自動的に reject される
+# （blocklist と違い、書き手を追加するたびに保護漏れを心配しなくてよい）。
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+#: 凍結パスへの書き込みが許される唯一の 2 つの writer 識別子
+#: （icsr8.report.regenerate_main_body / regenerate_appendix_a）。
+#: 実装は src/icsr8/report.py。文字列は各関数の呼び出し元が明示的に渡す
+#: 自己申告であり、動的にスタックから推測することはしない（推測ベースの
+#: 認可は偽装可能で、静的な allowlist より弱い保証しか与えない）。
+_SANCTIONED_WRITERS: frozenset[str] = frozenset(
+    {
+        "icsr8.report.regenerate_main_body",
+        "icsr8.report.regenerate_appendix_a",
+    }
+)
+
 # scripts/verify_report.py が main.tex と一致固定している既存成果物。
+# main body 6（表 TeX 2 + 図 PDF 4）+ 付録 A 3（表 TeX 2 + 図 PDF 1）= 計 9。
 # Why not results/ ディレクトリ丸ごと拒否: results/tier4/ など凍結外の新設先まで
 # 塞いでしまう。凍結はファイル単位の契約なのでパス単位で列挙する。
 FROZEN_OUTPUT_PATHS: frozenset[Path] = frozenset(
@@ -58,16 +81,30 @@ FROZEN_OUTPUT_PATHS: frozenset[Path] = frozenset(
         "doc/final_report/figures/cdf_protocol_a_backward_to_forward.pdf",
         "doc/final_report/figures/cdf_lolo.pdf",
         "doc/final_report/figures/segment_heatmap.pdf",
+        "doc/final_report/tables/tier4_protocol_a.tex",
+        "doc/final_report/tables/tier4_lolo.tex",
+        "doc/final_report/figures/cdf_lolo_tier4.pdf",
     )
 )
 
 
-def _guard_frozen(targets: list[Path]) -> None:
-    # Why not 書き込み直前に個別チェック: sweep 完走後に一部だけ書けて落ちると
-    # 半端な成果物が残る。全ターゲットを実行前に resolve して一括拒否する。
+def _guard_frozen(targets: list[Path], *, writer_id: str | None = None) -> None:
+    """targets のいずれかが凍結パスに触れる場合、writer_id が
+    _SANCTIONED_WRITERS に含まれなければ ValueError で reject する。
+
+    writer_id=None（デフォルト）は常に reject される — 実験用 CLI
+    （scripts/run_experimental_tier4.py）や hand-edit・ad-hoc スクリプトは
+    writer_id を渡さないので、凍結パスへは構造的に書けない。
+
+    Why not 書き込み直前に個別チェック: sweep 完走後に一部だけ書けて落ちると
+    半端な成果物が残る。全ターゲットを実行前に resolve して一括拒否する。
+    """
     hits = sorted(str(p) for p in targets if p.resolve() in FROZEN_OUTPUT_PATHS)
-    if hits:
-        raise ValueError(f"refusing to overwrite frozen outputs: {hits}")
+    if hits and writer_id not in _SANCTIONED_WRITERS:
+        raise ValueError(
+            f"refusing to write frozen outputs from non-sanctioned writer "
+            f"{writer_id!r}: {hits}"
+        )
 
 # --- 定数（手法名）-----------------------------------------------------------
 
@@ -691,11 +728,14 @@ def run_tier4(
     seed: int = RANDOM_SEED,
     B: int = 1000,
     skip_lolo: bool = False,
+    writer_id: str | None = None,
 ) -> dict[str, Path]:
     """全評価を回し、指定 3 ディレクトリにのみ書き出す。書いたパス dict を返す。
 
     凍結成果物（FROZEN_OUTPUT_PATHS）と衝突するターゲットが 1 つでもあれば、
-    sweep 実行・ディレクトリ作成より前に ValueError で拒否する。
+    sweep 実行・ディレクトリ作成より前に ValueError で拒否する
+    （writer_id が _SANCTIONED_WRITERS でなければ常に拒否。sanctioned な
+    icsr8.report.regenerate_appendix_a から呼ばれた場合のみ通す）。
     """
     output_dir = Path(output_dir)
     tables_dir = Path(tables_dir)
@@ -705,7 +745,8 @@ def run_tier4(
             "protocol_a.csv", "lolo_ledger.csv", "lolo_summary.csv", "diagnostics.csv",
         )]
         + [tables_dir / "tier4_protocol_a.tex", tables_dir / "tier4_lolo.tex"]
-        + [figures_dir / "cdf_lolo_tier4.pdf"]
+        + [figures_dir / "cdf_lolo_tier4.pdf"],
+        writer_id=writer_id,
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 

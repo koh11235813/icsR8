@@ -55,64 +55,6 @@ SENTINELS: tuple[tuple[str, str], ...] = (
     ("data/dataset", "dir"),
 )
 
-# 2026-07-14 contamination incident（README/CLAUDE.md に詳細）: run_all_methods.py
-# は --methods 省略時にレジストリを自動探索し、登録済みの Tier 4 手法まで巻き込んで
-# 凍結成果物を上書きした。この事故の再発防止として、本文 15 手法は README の
-# コマンド行と一致する「順序込みの literal」としてここに固定し、Colab からの
-# 実行では常に明示 --methods でこの 15 個・この順序のみを渡す
-# （run_all_methods_argv を参照）。README「Tier ごとの評価手順 › 本文 Tier 1–3」
-# の fenced コマンドの --methods 列挙と一致すること（テストが意味的抽出で照合）。
-MAIN_BODY_METHODS: tuple[str, ...] = (
-    "centered_fp",
-    "cla",
-    "gp_corridor",
-    "multiband_wcl",
-    "pbl",
-    "rank_fp",
-    "studentt_fp",
-    "wcl",
-    "wcl_blacklist",
-    "wcl_corridor",
-    "wcl_linpower",
-    "wcl_powerdomain",
-    "wcl_topl",
-    "wcl_varweight",
-    "wknn",
-)
-
-# src/icsr8/harness_tier4.py:78 の TIER4_METHODS を意図的にミラーした literal。
-# 本モジュールは icsr8 を一切 import しない契約（stage 前に icsr8 を触らないため）
-# なので、run_tier4_argv が「常に --methods を明示する」契約を満たすには、この
-# 7 手法をここに複製するしかない。ミラー元とのドリフトは
-# tests/test_colab_bootstrap.py がテスト関数内 import で icsr8.harness_tier4.
-# TIER4_METHODS と突き合わせて検出する契約（このモジュール自身では検出しない）。
-TIER4_METHODS: tuple[str, ...] = (
-    "fisher_wknn",
-    "mahalanobis_wknn",
-    "pls_corridor",
-    "ordinal_corridor",
-    "wcl_residual",
-    "joint_fp",
-    "gp_augmented_wknn",
-)
-
-#: full 実行時の出力先。CSV は verify_report.py/dump_method_diagnostics.py/
-#: notebook がハードコードする正規 results/ に書く（gitignore 済みの再生成物
-#: なので作業コピー内で上書きしてもリスクがない）。tables/figures は
-#: doc/final_report/ 配下の凍結ファイルを絶対に汚さないよう results/colab/
-#: 配下に隔離する。tier4 も同じ tables/figures を共有する
-#: （basename が tier4_*.tex / cdf_lolo_tier4.pdf で本文側と衝突しないため）。
-MAIN_BODY_OUTPUT_DIR = "results"
-TIER4_OUTPUT_DIR = "results/tier4"
-COLAB_TABLES_DIR = "results/colab/tables"
-COLAB_FIGURES_DIR = "results/colab/figures"
-
-#: smoke 実行時は両パイプラインが同名 CSV（protocol_a.csv 等）を書くため、
-#: 正規出力と衝突させないよう --output/--tables-dir/--figures-dir の 3 チャンネル
-#: すべてを同一の隔離ディレクトリに向ける。
-SMOKE_MAIN_BODY_DIR = "results/colab/smoke/main_body"
-SMOKE_TIER4_DIR = "results/colab/smoke/tier4"
-
 #: 所有権マーカーファイル名。source root 直下にこの名前のファイルが
 #: 既に存在する場合、staging を拒否する（衝突検出。ADR-0003 Amendment 参照）。
 MARKER_FILENAME = ".icsr8_stage.json"
@@ -606,9 +548,9 @@ def stage_working_copy(source: Path, workdir: Path, *, refresh: bool = False) ->
 
     if same_source and same_digest and not refresh:
         staged_manifest = source_manifest(workdir)
-        # 2026-07-29 実機事故対応: run_tier4.py は正規動作として tracked な
-        # results/tier4/run_tier4.log を上書きする。results/ はパイプライン
-        # 所有の可変領域なので整合性検査の対象から外す（外さないと、
+        # 2026-07-29 実機事故対応: 評価パイプライン（regenerate_appendix_a 等）は
+        # 正規動作として tracked な results/tier4/run_tier4.log を上書きする。
+        # results/ はパイプライン所有の可変領域なので整合性検査の対象から外す（外さないと、
         # スイープ実行後の 2 冊目の notebook で bootstrap の再利用が拒否され、
         # 生成済み results もろとも作業コピーが作り直されてしまう）。
         # source の鮮度判定は上の digest 比較（source 側のみ）が引き続き担う。
@@ -765,68 +707,6 @@ def bootstrap(
     if install_fonts:
         install_cjk_fonts()
     return staged_root
-
-
-# ---------------------------------------------------------------------------
-# argv ヘルパー（run_all_methods.py / run_tier4.py への安全な呼び出し規約）
-# ---------------------------------------------------------------------------
-
-
-def run_all_methods_argv(*, smoke: bool = False) -> list[str]:
-    """``scripts/run_all_methods.py`` の ``_parse_args(argv)`` にそのまま
-    渡せる argv を返す（スクリプトパス・インタプリタは含まない）。
-
-    2026-07-14 の contamination incident 以来、このスクリプトは
-    ``--methods`` を省略すると registry を自動探索して Tier 4 手法まで
-    巻き込む。そのため Colab からの呼び出しでは**常に** ``--methods`` を
-    明示し、full では MAIN_BODY_METHODS の 15 手法・この順序**のみ**を渡す。
-
-    full: CSV は正規 ``results/`` へ、tables/figures は凍結ファイルを
-    汚さないよう ``results/colab/`` 隔離ディレクトリへ。
-    smoke: 3 チャンネルとも ``results/colab/smoke/main_body/`` に向ける
-    （--smoke は実際には wcl/wcl_corridor に絞られるが、--methods 自体は
-    常に明示するという契約を smoke でも一貫させる）。
-    """
-    if smoke:
-        out = SMOKE_MAIN_BODY_DIR
-        return [
-            "--methods", ",".join(MAIN_BODY_METHODS),
-            "--smoke",
-            "--output", out,
-            "--tables-dir", out,
-            "--figures-dir", out,
-        ]
-    return [
-        "--methods", ",".join(MAIN_BODY_METHODS),
-        "--output", MAIN_BODY_OUTPUT_DIR,
-        "--tables-dir", COLAB_TABLES_DIR,
-        "--figures-dir", COLAB_FIGURES_DIR,
-    ]
-
-
-def run_tier4_argv(*, smoke: bool = False) -> list[str]:
-    """``scripts/run_tier4.py`` の ``_parse_args(argv)`` にそのまま渡せる
-    argv を返す。full/smoke の考え方は run_all_methods_argv と同様。
-
-    tables/figures は本文側と同じ ``results/colab/{tables,figures}`` を
-    共有する（tier4 が書く basename は ``tier4_*.tex`` /
-    ``cdf_lolo_tier4.pdf`` で本文側と衝突しないため、共有しても安全）。
-    """
-    if smoke:
-        out = SMOKE_TIER4_DIR
-        return [
-            "--methods", ",".join(TIER4_METHODS),
-            "--smoke",
-            "--output", out,
-            "--tables-dir", out,
-            "--figures-dir", out,
-        ]
-    return [
-        "--methods", ",".join(TIER4_METHODS),
-        "--output", TIER4_OUTPUT_DIR,
-        "--tables-dir", COLAB_TABLES_DIR,
-        "--figures-dir", COLAB_FIGURES_DIR,
-    ]
 
 
 #: ファイルごとの一意キー列（検証契約の literal 定義）。diagnostics.csv は tier4 側の

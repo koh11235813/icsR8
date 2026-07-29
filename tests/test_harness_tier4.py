@@ -12,6 +12,8 @@ Tier 4 の 7 手法は並行実装中のため、ここでは存在に依存せ�
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -500,32 +502,128 @@ def _sha(p: Path) -> str:
 
 
 def _frozen_sentinels(repo_root: Path) -> list[Path]:
+    # main body 6（表 TeX 2 + 図 PDF 4）+ 付録 A 3（表 TeX 2 + 図 PDF 1）= 9。
+    # harness_tier4.FROZEN_OUTPUT_PATHS と 1:1 対応する（ここでは import せず
+    # literal で複製する — 実装側の凍結リスト変更をテストが無警告で追従しないため）。
     return [
         repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex",
         repo_root / "doc" / "final_report" / "tables" / "lolo.tex",
+        repo_root / "doc" / "final_report" / "figures" / "cdf_protocol_a_forward_to_backward.pdf",
+        repo_root / "doc" / "final_report" / "figures" / "cdf_protocol_a_backward_to_forward.pdf",
         repo_root / "doc" / "final_report" / "figures" / "cdf_lolo.pdf",
+        repo_root / "doc" / "final_report" / "figures" / "segment_heatmap.pdf",
+        repo_root / "doc" / "final_report" / "tables" / "tier4_protocol_a.tex",
+        repo_root / "doc" / "final_report" / "tables" / "tier4_lolo.tex",
+        repo_root / "doc" / "final_report" / "figures" / "cdf_lolo_tier4.pdf",
     ]
 
 
+def test_frozen_output_paths_is_nine_files(repo_root):
+    # 2026-07-29 allowlist 化: 旧 blocklist は results/*.csv 4 本を含む 6 ファイル
+    # だった（Commit 1 で CSV を対象外化）。allowlist 化では、以前は
+    # FROZEN_OUTPUT_PATHS に一度も載ったことがなく構造的に無防御だった付録 A の
+    # 3 ファイル（tier4_*.tex 2 + cdf_lolo_tier4.pdf）も対象に加え、計 9 とする。
+    from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS
+
+    assert FROZEN_OUTPUT_PATHS == {p.resolve() for p in _frozen_sentinels(repo_root)}
+    assert len(FROZEN_OUTPUT_PATHS) == 9
+
+
 def test_run_tier4_refuses_frozen_output(repo_root):
-    # HIGH-1: 凍結済み表 TeX / 図 PDF を指す target は書き込み前に拒否する。
-    #
-    # 2026-07-29: 以前はここで run_tier4(output_dir=repo_root/"results", ...) を
-    # 呼んでいた。results/*.csv 4 本が FROZEN_OUTPUT_PATHS に載っていた頃は
-    # output_dir を results/ に向けるだけで衝突が起き ValueError を確認できたが、
-    # その 4 本を凍結対象から外した（CSV は git 管理下だが byte 一致契約の対象外、
-    # CLAUDE.md §1 参照）ことで run_tier4 の実際の出力ファイル名
-    # （protocol_a.csv 等 / tier4_*.tex / cdf_lolo_tier4.pdf、いずれも
-    # FROZEN_OUTPUT_PATHS の現行エントリと一致しない）からは二度と到達できない
-    # 契約になった。よってガード関数そのものを直接呼んで検証する
-    # （run_tier4 経由での結合テストは Commit 2 の allowlist 化で作り直す）。
+    # HIGH-1 + 2026-07-29 allowlist 化: writer_id を渡さない（= 実験用 CLI /
+    # hand-edit と同じ立場）呼び出しは、凍結パスを 1 つでも含む targets を
+    # ValueError で拒否する。sanctioned writer（icsr8.report.regenerate_*）で
+    # なければ通らないことがこのテストの核心。
     from icsr8.harness_tier4 import _guard_frozen
 
     sentinels = _frozen_sentinels(repo_root)
     before = {p: _sha(p) for p in sentinels}
     with pytest.raises(ValueError, match="frozen"):
-        _guard_frozen([repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex"])
+        _guard_frozen(
+            [repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex"],
+            writer_id=None,
+        )
     assert {p: _sha(p) for p in sentinels} == before
+
+
+def test_guard_frozen_rejects_unknown_writer_id(repo_root):
+    # allowlist は正確な文字列一致で判定する。似た名前や部分一致では通さない
+    # （偽装耐性 — _SANCTIONED_WRITERS の docstring が明記する契約）。
+    from icsr8.harness_tier4 import _guard_frozen
+
+    with pytest.raises(ValueError, match="frozen"):
+        _guard_frozen(
+            [repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex"],
+            writer_id="icsr8.report.regenerate_main_body_typo",
+        )
+
+
+def test_regenerate_main_body_writes_frozen_paths(monkeypatch, repo_root):
+    # 2026-07-29: sanctioned writer（icsr8.report.regenerate_main_body）は
+    # 凍結パスへの _guard_frozen を通過できることを検証する。report.py は
+    # `from icsr8.harness import run_protocol_a, ...` で名前を束縛しているため、
+    # icsr8.harness 側を monkeypatch しても report モジュール内の呼び出しには
+    # 反映されない — report モジュールの属性を直接差し替える必要がある。
+    #
+    # _guard_frozen は本物のまま・real repo root のまま呼ぶ（そうしないと
+    # 「sanctioned writer だから通った」のか「凍結パス扱いされずスキップされた
+    # だけ」なのか区別できないテストになってしまう）。一方 CSV/TeX/PDF への実
+    # 書き込みは commit 済みの tracked ファイルを破壊しうるため、実計算関数を
+    # 「to_csv が no-op なスタブオブジェクト」を返すフェイクに差し替えて防ぐ。
+    import icsr8.report as report
+
+    calls: list[str] = []
+
+    class _NoWriteFrame:
+        """pandas.DataFrame の代わりに渡すスタブ。to_csv を no-op にして
+        実リポジトリの commit 済み CSV を書き換えないようにする。"""
+
+        def to_csv(self, path, index=False):  # noqa: ARG002 - シグネチャ合わせ
+            calls.append(f"to_csv:{Path(path).name}")
+
+    def _fake_run_protocol_a(*args, **kwargs):
+        calls.append("run_protocol_a")
+        return _NoWriteFrame(), _NoWriteFrame()
+
+    def _fake_run_lolo(*args, **kwargs):
+        calls.append("run_lolo")
+        return _NoWriteFrame(), _NoWriteFrame()
+
+    def _fake_make_figures(*args, **kwargs):
+        calls.append("make_figures")
+        return []
+
+    def _fake_make_tex_tables(*args, **kwargs):
+        calls.append("make_tex_tables")
+        return []
+
+    def _fake_write_diag(*args, **kwargs):
+        calls.append("write_diagnostics")
+
+    monkeypatch.setattr(report, "_load_data", lambda data_root: (None, None, None, None))
+    monkeypatch.setattr(report, "run_protocol_a", _fake_run_protocol_a)
+    monkeypatch.setattr(report, "run_lolo", _fake_run_lolo)
+    monkeypatch.setattr(report, "make_figures", _fake_make_figures)
+    monkeypatch.setattr(report, "make_tex_tables", _fake_make_tex_tables)
+    monkeypatch.setattr(report, "_write_method_diagnostics", _fake_write_diag)
+
+    # 例外なく完走すれば sanctioned writer として _guard_frozen（実物・実 repo
+    # root）を通過した証拠。writer_id=None なら test_run_tier4_refuses_frozen_output/
+    # test_guard_frozen_rejects_unknown_writer_id が ValueError になることを固定
+    # 済みなので、この 2 テストと合わせて allowlist の両側が検証される。
+    report.regenerate_main_body()
+
+    assert calls == [
+        "run_protocol_a",
+        "to_csv:protocol_a.csv",
+        "to_csv:protocol_a_ledger.csv",
+        "run_lolo",
+        "to_csv:lolo_ledger.csv",
+        "to_csv:lolo_summary.csv",
+        "make_figures",
+        "make_tex_tables",
+        "write_diagnostics",
+    ]
 
 
 def test_run_tier4_confines_outputs(small, ap13, repo_root, tmp_path):
@@ -562,3 +660,45 @@ def test_make_figures_tier4_deterministic(lolo_run, tmp_path):
     time.sleep(1.1)  # CreationDate の秒が変わる状況を強制する
     p2 = make_figures_tier4(ledger, tmp_path / "b")[0]
     assert p1.read_bytes() == p2.read_bytes()
+
+
+def test_run_experimental_tier4_refuses_frozen_paths(repo_root, tmp_path):
+    # 2026-07-29 allowlist e2e: scripts/run_experimental_tier4.py は writer_id
+    # を渡さない非 sanctioned CLI なので、--tables-dir に凍結ディレクトリを指定
+    # すると run_tier4() 内部の _guard_frozen が ValueError で reject するはず。
+    # サブプロセスで実 CLI を起動し、実プロセス境界を越えても契約が保たれる
+    # ことを確認する（_guard_frozen はデータ読み込み・argparse の直後、重い
+    # sweep 開始前に呼ばれるため、このテストは高速に失敗する）。
+    import os
+
+    sentinels = _frozen_sentinels(repo_root)
+    before = {p: _sha(p) for p in sentinels}
+
+    # tests/test_colab_bootstrap.py の他テストが同一 pytest セッション内で
+    # os.environ["PYTHONPATH"] を実プロセスに残す場合がある（colab_bootstrap の
+    # activate() 副作用）。継承すると子プロセスが偽の src ツリーを先に見つけて
+    # `import icsr8.constants` に失敗しうるため、PYTHONPATH を明示的に落とす。
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_experimental_tier4.py"),
+            "--methods", "wcl",
+            "--output", str(tmp_path / "out"),
+            "--tables-dir", str(repo_root / "doc" / "final_report" / "tables"),
+            "--figures-dir", str(tmp_path / "figures"),
+            "--dataset-root", str(repo_root / "data"),
+        ],
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode != 0, (
+        f"expected non-zero exit; stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    assert "frozen" in result.stderr, f"stderr did not mention 'frozen': {result.stderr!r}"
+    assert {p: _sha(p) for p in sentinels} == before, "凍結ファイルが書き換わっている"

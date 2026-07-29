@@ -208,127 +208,23 @@ def _install_fake_google_colab(monkeypatch: pytest.MonkeyPatch) -> _FakeDrive:
 
 
 # ===========================================================================
-# 15/7 手法: exact set+順序、README/registry との整合
-# （契約: 「15 手法: 個数・exact set+順序を README コマンド行のパースと照合・
-# icsr8.methods.available_methods()/TIER4_METHODS との整合」）
-# ===========================================================================
-
-
-def _extract_readme_methods_command() -> list[str]:
-    """README.md の fenced code block から `run_all_methods.py --methods` の
-    コマンド行を意味的に抽出し、カンマ区切りの手法名リストを返す。
-
-    行番号ではなく「```bash フェンス内で run_all_methods.py --methods を含む
-    行（複数行に折り返されていれば連結後）」というパターンマッチで抽出する
-    （行番号照合の禁止 — 行番号は節の追加で腐るため意味的に抽出する）。
-    """
-    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    fences = re.findall(r"```bash\n(.*?)```", text, flags=re.DOTALL)
-    for fence in fences:
-        if "run_all_methods.py" in fence and "--methods" in fence:
-            # シェルの行末 `\` 折り返しを連結してから 1 論理行に潰す。
-            joined = " ".join(fence.replace("\\\n", " ").split())
-            match = re.search(r"--methods\s+(\S+)", joined)
-            if match:
-                return [m for m in match.group(1).split(",") if m]
-    raise AssertionError("README.md 内に run_all_methods.py --methods のコマンド行が見つからない")
-
-
-def test_readme_methods_command_matches_main_body_methods_exact_order(cb):
-    """README の --methods コマンド行と MAIN_BODY_METHODS が個数・順序込みで一致する。
-
-    2026-07-14 contamination incident の再発防止契約そのもの — README がこの
-    順序で明示するリストと、Colab から渡す argv の順序がズレたら、README を
-    見て手動実行した場合との再現性が壊れる。
-    """
-    readme_methods = _extract_readme_methods_command()
-    assert readme_methods == list(cb.MAIN_BODY_METHODS)
-
-
-def test_main_body_methods_count_is_15(cb):
-    assert len(cb.MAIN_BODY_METHODS) == 15
-    assert len(set(cb.MAIN_BODY_METHODS)) == 15  # 重複が無い
-
-
-def test_tier4_methods_count_is_7(cb):
-    assert len(cb.TIER4_METHODS) == 7
-    assert len(set(cb.TIER4_METHODS)) == 7
-
-
-def test_main_body_and_tier4_methods_are_disjoint(cb):
-    assert set(cb.MAIN_BODY_METHODS).isdisjoint(set(cb.TIER4_METHODS))
-
-
-def test_main_body_methods_are_subset_of_available_methods(cb):
-    # icsr8 import はテスト関数内限定（colab_bootstrap 自体は icsr8 に依存しない
-    # 契約なので、cross-check だけテスト側で icsr8 を import する）。
-    import icsr8.methods
-
-    available = set(icsr8.methods.available_methods())
-    assert set(cb.MAIN_BODY_METHODS) <= available
-
-
-def test_tier4_methods_matches_harness_tier4_exact_order(cb):
-    """colab_bootstrap.TIER4_METHODS は harness_tier4.TIER4_METHODS の意図的な
-    literal ミラー（icsr8 を import できない制約による）。ここでドリフトを検出する
-    — このテストが唯一の同期保証。
-    """
-    import icsr8.harness_tier4 as harness_tier4
-
-    assert list(cb.TIER4_METHODS) == list(harness_tier4.TIER4_METHODS)
-
-
-def test_tier4_methods_are_subset_of_available_methods(cb):
-    import icsr8.methods
-
-    available = set(icsr8.methods.available_methods())
-    assert set(cb.TIER4_METHODS) <= available
-
-
-# ===========================================================================
-# argv 契約: 実 parser（run_all_methods.py / run_tier4.py の `_parse_args`）に
-# 通し、生成ファイルターゲットが protected manifest と非衝突であることを検査
-# する（argv 契約。行番号照合はしない）。
-# ===========================================================================
-
-
-def _load_script_module(name: str):
-    """`scripts/<name>.py` を importlib で明示ロードする（icsr8 は普通に
-    import 可能なので、colab_bootstrap と違い module 内 import 文はそのまま
-    動く）。"""
-    path = REPO_ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-@pytest.fixture(scope="module")
-def run_all_methods_module():
-    return _load_script_module("run_all_methods")
-
-
-@pytest.fixture(scope="module")
-def run_tier4_module():
-    return _load_script_module("run_tier4")
-
-
-# protected-path manifest: 凍結 7 点相当 + doc/final_report・doc/slides の
-# tracked 全ファイル（`git ls-files doc/final_report doc/slides` を実行して
-# 得た明示リスト。「FROZEN_OUTPUT_PATHS は 2026-07-23 ピボット前の旧契約でズレている」
-# ため harness_tier4.FROZEN_OUTPUT_PATHS は使わず、ここに literal で固定する。
-# 2026-07-23 の凍結契約刷新で results/*.csv は gitignore 済みの再生成物に
-# 格下げされた（CLAUDE.md Development §1）ので、意図的にここへは含めない —
-# colab full 実行が正規 results/ を上書きするのは契約上の想定内の挙動であり、
-# それを「衝突」として検出したら誤検知になる。
+# 凍結ファイル保護 manifest（PROTECTED_PATHS）
 #
-# 注意: doc/slides/main.{aux,fls,log,nav,snm,toc,fdb_latexmk} は latexmk の
-# ビルド副産物で、tracked ではあるが凍結契約の対象ではない（Colab 上で
-# latexmk を回せば普通に再生成される）。ここに含めているのは「colab_bootstrap
-# の argv ヘルパーが書く CSV/TeX/PDF ターゲットと衝突しない」ことを検査する
-# ためのリストであり、「latexmk 実行そのものからこれらを保護する」主張では
-# ない点に注意（本テストファイルは argv ヘルパーの出力先だけを検査対象にして
-# おり、latexmk の出力先隔離は docs/COLAB.md の -outdir 契約が担う）。
+# 2026-07-29 allowlist 化: scripts/run_all_methods.py / scripts/run_tier4.py と
+# それらの argv 生成ヘルパー colab_bootstrap.run_all_methods_argv() /
+# run_tier4_argv() は削除された（scripts/{regenerate_main_body,
+# regenerate_appendix_a,run_experimental_tier4}.py に置き換え。前2つは
+# 引数ゼロ、後者は --methods/--output/--tables-dir/--figures-dir 全 required）。
+# これに伴い colab_bootstrap.MAIN_BODY_METHODS/TIER4_METHODS ミラーと、
+# argv 契約テスト・15/7 手法検証テストは丸ごと不要になった（凍結ファイル保護は
+# harness_tier4._SANCTIONED_WRITERS の allowlist に一本化 —
+# tests/test_harness_tier4.py 参照）。
+#
+# PROTECTED_PATHS（doc/final_report・doc/slides の tracked 全ファイル）自体は
+# colab_bootstrap の staging 保護（作業コピー中の tracked ファイル一覧）とは
+# 独立の関心事として維持する。
+# ===========================================================================
+
 PROTECTED_PATHS: frozenset[Path] = frozenset(
     (REPO_ROOT / rel).resolve()
     for rel in (
@@ -360,152 +256,14 @@ PROTECTED_PATHS: frozenset[Path] = frozenset(
     )
 )
 
-# 実際に各 CLI が書く basename（module 定数からではなく、harness.py /
-# harness_tier4.py のソース読解に基づく literal — colab_bootstrap.py 自身の
-# 定数と比較対象にするテストでこのリストを使う以上、そこから逆算しては
-# 検査の意味が無くなるため、意図的に独立した literal にする）。
-_MAIN_BODY_CSV_BASENAMES = (
-    "protocol_a.csv", "protocol_a_ledger.csv", "lolo_ledger.csv", "lolo_summary.csv",
-)
-_MAIN_BODY_TEX_BASENAMES = ("protocol_a.tex", "lolo.tex")
-_MAIN_BODY_PDF_BASENAMES = (
-    "cdf_protocol_a_forward_to_backward.pdf", "cdf_protocol_a_backward_to_forward.pdf",
-    "cdf_lolo.pdf", "segment_heatmap.pdf",
-)
-_TIER4_CSV_BASENAMES = ("protocol_a.csv", "lolo_ledger.csv", "lolo_summary.csv", "diagnostics.csv")
-_TIER4_TEX_BASENAMES = ("tier4_protocol_a.tex", "tier4_lolo.tex")
-_TIER4_PDF_BASENAMES = ("cdf_lolo_tier4.pdf",)
 
-
-def _targets(output_dir: str, tables_dir: str, figures_dir: str, csvs, texs, pdfs) -> set[Path]:
-    out, tab, fig = Path(output_dir), Path(tables_dir), Path(figures_dir)
-    targets = {(REPO_ROOT / out / f).resolve() for f in csvs}
-    targets |= {(REPO_ROOT / tab / f).resolve() for f in texs}
-    targets |= {(REPO_ROOT / fig / f).resolve() for f in pdfs}
-    return targets
-
-
-@pytest.mark.parametrize("smoke", [False, True], ids=["full", "smoke"])
-def test_run_all_methods_argv_always_has_methods_flag(cb, smoke):
-    argv = cb.run_all_methods_argv(smoke=smoke)
-    assert "--methods" in argv
-
-
-@pytest.mark.parametrize("smoke", [False, True], ids=["full", "smoke"])
-def test_run_tier4_argv_always_has_methods_flag(cb, smoke):
-    argv = cb.run_tier4_argv(smoke=smoke)
-    assert "--methods" in argv
-
-
-def test_run_all_methods_argv_full_parses_to_exact_15_methods_in_order(cb, run_all_methods_module):
-    args = run_all_methods_module._parse_args(cb.run_all_methods_argv(smoke=False))
-    assert args.smoke is False
-    assert run_all_methods_module._resolve_methods(args) == list(cb.MAIN_BODY_METHODS)
-    assert args.output == cb.MAIN_BODY_OUTPUT_DIR
-    assert args.tables_dir == cb.COLAB_TABLES_DIR
-    assert args.figures_dir == cb.COLAB_FIGURES_DIR
-
-
-def test_run_all_methods_argv_smoke_resolves_to_two_reference_methods(cb, run_all_methods_module):
-    """smoke=True でも --methods は 15 手法を明示するが（防御的多重化の契約）、
-    run_all_methods.py の `_resolve_methods` は `args.smoke` を優先評価するため
-    実際に選ばれる手法は常に ["wcl", "wcl_corridor"] になる。これは bug ではなく
-    module 側の docstring が明記する意図的な仕様（--methods の明示自体が契約の
-    対象で、選ばれる集合ではない）。ここでは「15 手法に解決される」という
-    誤ったオラクルを立てず、実際の解決結果を固定する。
-    """
-    argv = cb.run_all_methods_argv(smoke=True)
-    assert ",".join(cb.MAIN_BODY_METHODS) in argv  # --methods は明示されている
-    args = run_all_methods_module._parse_args(argv)
-    assert args.smoke is True
-    assert run_all_methods_module._resolve_methods(args) == ["wcl", "wcl_corridor"]
-    assert args.output == cb.SMOKE_MAIN_BODY_DIR
-    assert args.tables_dir == cb.SMOKE_MAIN_BODY_DIR
-    assert args.figures_dir == cb.SMOKE_MAIN_BODY_DIR
-
-
-@pytest.mark.parametrize("smoke", [False, True], ids=["full", "smoke"])
-def test_run_all_methods_argv_file_targets_do_not_collide_with_protected(cb, smoke):
-    args_like = cb.run_all_methods_argv(smoke=smoke)
-    # argv は ["--methods", v, ("--smoke",)?, "--output", o, "--tables-dir", t, "--figures-dir", f]
-    output = args_like[args_like.index("--output") + 1]
-    tables = args_like[args_like.index("--tables-dir") + 1]
-    figures = args_like[args_like.index("--figures-dir") + 1]
-    targets = _targets(
-        output, tables, figures,
-        _MAIN_BODY_CSV_BASENAMES, _MAIN_BODY_TEX_BASENAMES, _MAIN_BODY_PDF_BASENAMES,
-    )
-    collision = targets & PROTECTED_PATHS
-    assert collision == set(), f"protected files at risk: {sorted(collision)}"
-    if smoke:
-        # smoke は 3 チャンネルとも同一の隔離ディレクトリ配下に限定される。
-        assert all(str(p).startswith(str((REPO_ROOT / cb.SMOKE_MAIN_BODY_DIR).resolve())) for p in targets)
-
-
-def test_run_tier4_argv_full_parses_to_exact_7_methods(cb, run_tier4_module, monkeypatch):
-    """`run_tier4.py` main() は `_resolve_methods` に相当する共通関数を切り出して
-    いない（--methods 分岐が main() 内に inline）ので、実 argv 契約を検証するには
-    `main()` を実際に走らせる必要がある。重い計算本体（`run_tier4`）だけ
-    monkeypatch で置き換え、実データローダ・実 argparse・実分岐ロジックは
-    そのまま実行する。
-    """
-    captured: dict = {}
-
-    def fake_run_tier4(**kwargs):
-        captured.update(kwargs)
-        return {}
-
-    monkeypatch.setattr(run_tier4_module, "run_tier4", fake_run_tier4)
-
-    argv = list(cb.run_tier4_argv(smoke=False)) + ["--dataset-root", str(REPO_ROOT / "data")]
-    rc = run_tier4_module.main(argv)
-
-    assert rc == 0
-    assert captured["methods"] == list(cb.TIER4_METHODS)
-    assert captured["B"] == 1000
-    assert str(captured["output_dir"]) == cb.TIER4_OUTPUT_DIR
-    assert str(captured["tables_dir"]) == cb.COLAB_TABLES_DIR
-    assert str(captured["figures_dir"]) == cb.COLAB_FIGURES_DIR
-
-
-def test_run_tier4_argv_smoke_resolves_to_two_reference_methods_and_subsamples(
-    cb, run_tier4_module, monkeypatch
-):
-    """smoke=True の run_tier4_argv も本文側同様「--methods は明示するが実際に
-    選ばれるのは代役 2 手法」という同じ非対称契約を持つ（run_tier4.py:60-63 の
-    `if args.smoke:` が `elif args.methods:` より先に評価されるため）。
-    """
-    captured: dict = {}
-
-    def fake_run_tier4(**kwargs):
-        captured.update(kwargs)
-        return {}
-
-    monkeypatch.setattr(run_tier4_module, "run_tier4", fake_run_tier4)
-
-    argv = list(cb.run_tier4_argv(smoke=True)) + ["--dataset-root", str(REPO_ROOT / "data")]
-    rc = run_tier4_module.main(argv)
-
-    assert rc == 0
-    assert captured["methods"] == run_tier4_module.SMOKE_METHODS == ["wcl", "wcl_corridor"]
-    assert captured["B"] == 100
-    assert str(captured["output_dir"]) == cb.SMOKE_TIER4_DIR
-
-
-@pytest.mark.parametrize("smoke", [False, True], ids=["full", "smoke"])
-def test_run_tier4_argv_file_targets_do_not_collide_with_protected(cb, smoke):
-    args_like = cb.run_tier4_argv(smoke=smoke)
-    output = args_like[args_like.index("--output") + 1]
-    tables = args_like[args_like.index("--tables-dir") + 1]
-    figures = args_like[args_like.index("--figures-dir") + 1]
-    targets = _targets(
-        output, tables, figures,
-        _TIER4_CSV_BASENAMES, _TIER4_TEX_BASENAMES, _TIER4_PDF_BASENAMES,
-    )
-    collision = targets & PROTECTED_PATHS
-    assert collision == set(), f"protected files at risk: {sorted(collision)}"
-    if smoke:
-        assert all(str(p).startswith(str((REPO_ROOT / cb.SMOKE_TIER4_DIR).resolve())) for p in targets)
+def test_protected_paths_is_24_files():
+    # 定数を死んだコードにしない最小の生存確認（argv 契約テスト削除後も
+    # PROTECTED_PATHS 自体は独立の関心事として維持する契約 — 上のコメント参照）。
+    # 25 = doc/final_report 13（.latexmkrc・main.{pdf,tex,txt}・tables 4・
+    # figures 6）+ doc/slides 12（.latexmkrc・main.{aux,fdb_latexmk,fls,log,
+    # nav,out,pdf,snm,tex,toc}・narration.md）。
+    assert len(PROTECTED_PATHS) == 25
 
 
 # ===========================================================================
@@ -1599,91 +1357,42 @@ def test_validate_colab_outputs_composite_key_unique_across_all_five_known_files
 
 
 # ===========================================================================
-# smoke オラクル: テスト側 literal で固定する（本体定数から生成しない。
-# colab_bootstrap.MAIN_BODY_METHODS 等から逆算すると自己参照になり、本体側の
+# 本文 15 手法オラクル: テスト側 literal で固定する（本体定数から生成しない。
+# icsr8.report.MAIN_BODY_METHODS 等から逆算すると自己参照になり、本体側の
 # バグをテストが見逃してしまうため独立に書き下す）。
+#
+# 2026-07-29 allowlist 化: colab の argv 生成ヘルパーが無くなったため、旧
+# SMOKE_ORACLE_*_CSV/TEX/PDF（basename 個数の smoke 契約）と、それらに依存した
+# 4 テストは削除した。results/*.csv は Commit 1 以降 git 管理下にあり
+# フレッシュクローンでも常に存在するため、以下のテストは skip 不要になった。
 # ===========================================================================
 
-# main_body smoke: --output/--tables-dir/--figures-dir が全て同一隔離ディレクトリ
-# なので 4 CSV + 2 TeX(protocol_a.tex, lolo.tex) + 4 PDF = 10 ファイル。
-SMOKE_ORACLE_MAIN_BODY_CSV = (
-    "protocol_a.csv", "protocol_a_ledger.csv", "lolo_ledger.csv", "lolo_summary.csv",
-)
-SMOKE_ORACLE_MAIN_BODY_TEX = ("protocol_a.tex", "lolo.tex")
-SMOKE_ORACLE_MAIN_BODY_PDF = (
-    "cdf_protocol_a_forward_to_backward.pdf", "cdf_protocol_a_backward_to_forward.pdf",
-    "cdf_lolo.pdf", "segment_heatmap.pdf",
-)
-
-# tier4 smoke: 4 CSV(protocol_a/lolo_ledger/lolo_summary/diagnostics) + 2 TeX
-# (tier4_protocol_a.tex, tier4_lolo.tex) + 1 PDF(cdf_lolo_tier4.pdf) = 7 ファイル。
-SMOKE_ORACLE_TIER4_CSV = ("protocol_a.csv", "lolo_ledger.csv", "lolo_summary.csv", "diagnostics.csv")
-SMOKE_ORACLE_TIER4_TEX = ("tier4_protocol_a.tex", "tier4_lolo.tex")
-SMOKE_ORACLE_TIER4_PDF = ("cdf_lolo_tier4.pdf",)
-
-# 本文 15 手法（README の Tier1-3 fenced コマンド由来 — colab_bootstrap.MAIN_BODY_METHODS からの
-# 逆算ではなく、ここで独立にもう一度書き下す）。
-SMOKE_ORACLE_MAIN_BODY_METHODS = (
+# 本文 15 手法（README の Tier1-3 fenced コマンド由来 — icsr8.report.MAIN_BODY_METHODS
+# からの逆算ではなく、ここで独立にもう一度書き下す）。
+MAIN_BODY_METHODS_ORACLE = (
     "centered_fp", "cla", "gp_corridor", "multiband_wcl", "pbl", "rank_fp",
     "studentt_fp", "wcl", "wcl_blacklist", "wcl_corridor", "wcl_linpower",
     "wcl_powerdomain", "wcl_topl", "wcl_varweight", "wknn",
 )
 
-# full main-body の期待行数（テスト側独立 literal — 本体定数から生成しない契約）。
-SMOKE_ORACLE_FULL_ROW_COUNTS = {
+# 本文 15 手法の期待行数（テスト側独立 literal — 本体定数から生成しない契約）。
+FULL_ROW_COUNTS_ORACLE = {
     "protocol_a.csv": 30,
     "protocol_a_ledger.csv": 1770,
     "lolo_ledger.csv": 885,
     "lolo_summary.csv": 15,
 }
 
-
-def test_smoke_oracle_main_body_is_10_files():
-    total = len(SMOKE_ORACLE_MAIN_BODY_CSV) + len(SMOKE_ORACLE_MAIN_BODY_TEX) + len(SMOKE_ORACLE_MAIN_BODY_PDF)
-    assert total == 10
-
-
-def test_smoke_oracle_tier4_is_7_files():
-    total = len(SMOKE_ORACLE_TIER4_CSV) + len(SMOKE_ORACLE_TIER4_TEX) + len(SMOKE_ORACLE_TIER4_PDF)
-    assert total == 7
-
-
-def test_smoke_oracle_main_body_basenames_match_actual_argv_literals():
-    """テスト側で独立に書き下した SMOKE_ORACLE_* と、argv 契約テストで使っている
-    _MAIN_BODY_*_BASENAMES / _TIER4_*_BASENAMES が一致することを固定する
-    （両者が別々にドリフトしたら、どちらかが間違っている証拠になる）。
-    """
-    assert set(SMOKE_ORACLE_MAIN_BODY_CSV) == set(_MAIN_BODY_CSV_BASENAMES)
-    assert set(SMOKE_ORACLE_MAIN_BODY_TEX) == set(_MAIN_BODY_TEX_BASENAMES)
-    assert set(SMOKE_ORACLE_MAIN_BODY_PDF) == set(_MAIN_BODY_PDF_BASENAMES)
-    assert set(SMOKE_ORACLE_TIER4_CSV) == set(_TIER4_CSV_BASENAMES)
-    assert set(SMOKE_ORACLE_TIER4_TEX) == set(_TIER4_TEX_BASENAMES)
-    assert set(SMOKE_ORACLE_TIER4_PDF) == set(_TIER4_PDF_BASENAMES)
-
-
-def test_smoke_oracle_15_methods_matches_module_constant(cb):
-    assert set(SMOKE_ORACLE_MAIN_BODY_METHODS) == set(cb.MAIN_BODY_METHODS)
-    assert len(SMOKE_ORACLE_MAIN_BODY_METHODS) == 15
-
-
 _RESULTS_DIR = REPO_ROOT / "results"
-_HAS_FULL_MAIN_BODY_RESULTS = all(
-    (_RESULTS_DIR / name).is_file() for name in SMOKE_ORACLE_FULL_ROW_COUNTS
-)
 
 
-@pytest.mark.skipif(
-    not _HAS_FULL_MAIN_BODY_RESULTS,
-    reason=(
-        "results/*.csv はフレッシュクローンでは不在（gitignore 済みの再生成物）。"
-        "README の run_all_methods.py --methods コマンドを先に実行してから "
-        "このテストを走らせる。"
-    ),
-)
 def test_full_main_body_results_match_expected_row_counts_and_method_set(cb):
-    """実際に生成済みの正規 `results/*.csv`（存在すれば）に対して、
-    テスト側 literal 契約が明示する行数・15 手法 exact・複合キー一意・failed 全 False・
-    有限値を validate_colab_outputs 経由で検査する。
+    """commit 済み `results/*.csv` に対して、テスト側 literal 契約が明示する
+    行数・15 手法 exact・複合キー一意・failed 全 False・有限値を
+    validate_colab_outputs 経由で検査する。
+
+    2026-07-29: results/*.csv は Commit 1 以降 git 管理下でフレッシュクローン
+    にも常に存在するため、以前あった「不在なら skip」の skipif は削除した。
     """
     facts = cb.validate_colab_outputs(
         _RESULTS_DIR,
@@ -1694,11 +1403,11 @@ def test_full_main_body_results_match_expected_row_counts_and_method_set(cb):
         },
     )
 
-    for filename, expected_rows in SMOKE_ORACLE_FULL_ROW_COUNTS.items():
+    for filename, expected_rows in FULL_ROW_COUNTS_ORACLE.items():
         assert facts[filename]["rows"] == expected_rows, filename
 
-    assert facts["protocol_a.csv"]["methods"] == sorted(SMOKE_ORACLE_MAIN_BODY_METHODS)
-    assert facts["lolo_summary.csv"]["methods"] == sorted(SMOKE_ORACLE_MAIN_BODY_METHODS)
+    assert facts["protocol_a.csv"]["methods"] == sorted(MAIN_BODY_METHODS_ORACLE)
+    assert facts["lolo_summary.csv"]["methods"] == sorted(MAIN_BODY_METHODS_ORACLE)
 
 
 # ===========================================================================
