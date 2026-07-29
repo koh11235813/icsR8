@@ -99,6 +99,11 @@ def main(argv: list[str] | None = None) -> int:
         methods, scans_f, scans_b, ap13, truth, seed=args.seed, B=B
     )
     results.to_csv(output / "protocol_a.csv", index=False)
+    # 2026-07-27: protocol_a.csv は手法×fold の要約統計しか持たず、地点別誤差が
+    # 失われていた。LOLO 側は lolo_ledger.csv を残しているのに Protocol A だけ
+    # 残らないため、CDF の再描画に必ず全 sweep の再実行が要る非対称があった。
+    # 台帳も残して両プロトコルを対称にする（results/**/*.csv は gitignore 対象）。
+    pa_ledgers.to_csv(output / "protocol_a_ledger.csv", index=False)
 
     lolo_ledger = None
     lolo_summary = None

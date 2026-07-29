@@ -25,3 +25,8 @@ doc/map_r0701.pdf
 # フレッシュクローン後は scripts/run_all_methods.py --methods ... と
 # scripts/run_tier4.py で生成する（詳細は README §凍結契約と CSV 生成）。
 results/**/*.csv
+# results/ 配下の図も同じく再生成物（scripts/plot_*.py で台帳から作り直せる）。
+# 版管理する図は doc/final_report/figures/ の凍結 PDF のみ。
+results/**/*.pdf
+results/**/*.png
+results/**/*.tex
