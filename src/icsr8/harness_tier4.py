@@ -52,10 +52,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 FROZEN_OUTPUT_PATHS: frozenset[Path] = frozenset(
     (_REPO_ROOT / rel).resolve()
     for rel in (
-        "results/protocol_a.csv",
-        "results/lolo_ledger.csv",
-        "results/lolo_summary.csv",
-        "results/method_diagnostics.csv",
         "doc/final_report/tables/protocol_a.tex",
         "doc/final_report/tables/lolo.tex",
         "doc/final_report/figures/cdf_protocol_a_forward_to_backward.pdf",

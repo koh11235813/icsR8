@@ -501,31 +501,31 @@ def _sha(p: Path) -> str:
 
 def _frozen_sentinels(repo_root: Path) -> list[Path]:
     return [
-        repo_root / "results" / "protocol_a.csv",
-        repo_root / "results" / "lolo_ledger.csv",
-        repo_root / "results" / "lolo_summary.csv",
         repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex",
         repo_root / "doc" / "final_report" / "tables" / "lolo.tex",
         repo_root / "doc" / "final_report" / "figures" / "cdf_lolo.pdf",
     ]
 
 
-def test_run_tier4_refuses_frozen_output(small, ap13, repo_root, tmp_path):
-    # HIGH-1: 凍結済み results/*.csv を指す output は書き込み前に拒否する。
-    sf, sb, tr = small
+def test_run_tier4_refuses_frozen_output(repo_root):
+    # HIGH-1: 凍結済み表 TeX / 図 PDF を指す target は書き込み前に拒否する。
+    #
+    # 2026-07-29: 以前はここで run_tier4(output_dir=repo_root/"results", ...) を
+    # 呼んでいた。results/*.csv 4 本が FROZEN_OUTPUT_PATHS に載っていた頃は
+    # output_dir を results/ に向けるだけで衝突が起き ValueError を確認できたが、
+    # その 4 本を凍結対象から外した（CSV は git 管理下だが byte 一致契約の対象外、
+    # CLAUDE.md §1 参照）ことで run_tier4 の実際の出力ファイル名
+    # （protocol_a.csv 等 / tier4_*.tex / cdf_lolo_tier4.pdf、いずれも
+    # FROZEN_OUTPUT_PATHS の現行エントリと一致しない）からは二度と到達できない
+    # 契約になった。よってガード関数そのものを直接呼んで検証する
+    # （run_tier4 経由での結合テストは Commit 2 の allowlist 化で作り直す）。
+    from icsr8.harness_tier4 import _guard_frozen
+
     sentinels = _frozen_sentinels(repo_root)
     before = {p: _sha(p) for p in sentinels}
     with pytest.raises(ValueError, match="frozen"):
-        run_tier4(
-            scans_f=sf, scans_b=sb, ap13=ap13, truth=tr,
-            methods=STANDIN_METHODS, references=STANDIN_REFERENCES,
-            output_dir=repo_root / "results",
-            tables_dir=tmp_path / "t", figures_dir=tmp_path / "f",
-            seed=0, B=SMOKE_B,
-        )
+        _guard_frozen([repo_root / "doc" / "final_report" / "tables" / "protocol_a.tex"])
     assert {p: _sha(p) for p in sentinels} == before
-    # ガードは実行前に働く → tmp 側にも何も書かれていない。
-    assert not list(tmp_path.rglob("*"))
 
 
 def test_run_tier4_confines_outputs(small, ap13, repo_root, tmp_path):

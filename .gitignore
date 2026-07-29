@@ -20,11 +20,11 @@ doc/**/main.toc
 doc/pdf/
 doc/map_r0701.pdf
 
-# 2026-07-23 CSV は Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で
-# ULP レベルにドリフトするため、byte 一致契約から外して再生成物として扱う。
-# フレッシュクローン後は scripts/run_all_methods.py --methods ... と
-# scripts/run_tier4.py で生成する（詳細は README §凍結契約と CSV 生成）。
-results/**/*.csv
+# 2026-07-29 CSV は git 管理に戻す (notebook validation の敷居を下げるため)。
+# Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で ULP レベルにドリフト
+# するが、報告書本文の数値は %.2f を通すのでこの drift の影響を受けない。
+# ただし追試 (extra/) は隔離成果物なので gitignore 維持。
+results/extra/**/*.csv
 # results/ 配下の図も同じく再生成物（scripts/plot_*.py で台帳から作り直せる）。
 # 版管理する図は doc/final_report/figures/ の凍結 PDF のみ。
 results/**/*.pdf

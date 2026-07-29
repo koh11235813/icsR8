@@ -23,10 +23,10 @@ LOLO 評価で平均誤差 **0.72 m** (≤2 m 率 90%) を達成し、目標の 
 │   ├── slides/           発表スライド (Beamer) + ナレーション台本 narration.md
 │   ├── mid_report/       中間報告書
 │   └── pdf/              課題ガイダンス・課題テキスト等の配布資料
-└── results/              CSV は gitignore（再生成物）。ログのみ版管理
-    ├── *.csv             本文 Tier 1–3（15 手法）の生成 CSV（都度再生成、OS 依存）
-    ├── tier4/            Tier 4（付録 A、7 手法）の隔離成果物（CSV は再生成物）
-    └── extra/            追試（vWCL 等）の隔離成果物（CSV は再生成物）
+└── results/              CSV は git 管理下（ULP drift 有り）。追試 extra/ のみ gitignore
+    ├── *.csv             本文 Tier 1–3 の生成 CSV（git 管理、ULP drift 有り）
+    ├── tier4/            Tier 4（付録 A、7 手法）の成果物（CSV は git 管理、ULP drift 有り）
+    └── extra/            追試（vWCL 等）の隔離成果物（CSV は再生成物・gitignore）
 ```
 
 ## セットアップ
@@ -51,18 +51,18 @@ uv sync --all-groups
 表 TeX は `%.2f` を通すため OS 中立で HEAD と byte 一致する想定、
 図 PDF は視覚差なし前提で `076bec5` 以降 git 管理下。
 
-`results/*.csv` は本文値の元になる中間 CSV だが Mac(Accelerate) と Linux(OpenBLAS) の
-BLAS 実装差で ULP レベルにドリフトするため、byte 一致契約から外して gitignore の
-再生成物として扱う（2026-07-23 の凍結契約刷新）。歴史的経緯は
-`docs/adr/0001-freeze-main-body-artifacts.md`。
+`results/*.csv` は本文値の元になる中間 CSV で git 管理下にあるが、
+Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で ULP レベルにドリフトするため
+byte 一致契約の対象外である。報告書本文の数値は `%.2f` を通すのでこの drift の
+影響を受けない。歴史的経緯は `docs/adr/0001-freeze-main-body-artifacts.md`。
 
 ## Tier ごとの評価手順
 
 ### 本文 Tier 1–3（15 手法・CSV と表 TeX/図 PDF の生成）
 
-`results/*.csv` は gitignore されているため、フレッシュクローンでは存在しない。
-`verify_report.py` や pytest を回す前に、まずこのコマンドで CSV を生成する。
-凍結対象の表 TeX と図 PDF も同時に再生される（HEAD と byte 一致するはず）。
+`results/*.csv` は git 管理下にあるため、フレッシュクローンでも生成済みの状態で
+存在する。CSV を再生成したい場合のみ、以下のコマンドを回す
+（凍結対象の表 TeX と図 PDF も同時に再生される。HEAD と byte 一致するはず）。
 
 ```bash
 uv run python scripts/run_all_methods.py --methods \
@@ -98,8 +98,6 @@ uv run python scripts/run_tier4.py --methods wcl_virtual_ap \
 > `tier4_*.tex`（付録 A の表）を少数手法版で上書きしてしまう。
 
 ### 診断値・検証ゲート
-
-フレッシュクローン直後は `results/*.csv` が無いので、先に §本文 Tier 1–3 のコマンドで CSV を生成してから両ゲートを回す。
 
 ```bash
 uv run python scripts/dump_method_diagnostics.py   # results/method_diagnostics.csv 再生成
