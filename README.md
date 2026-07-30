@@ -79,8 +79,14 @@ tripwire であり、**「Mac 上で byte 再現可能」という主張では�
 matplotlib の既定 `savefig` が wall-clock `CreationDate` を埋め込むため、
 数値が同一でも再生成のたびに byte が変わる（`cdf_lolo_tier4.pdf` のみ
 `metadata={"CreationDate": None}` を渡しており決定的）。正当な再生成を
-行った場合は、同じコミットで `frozen_pdf_hashes.json` を意図的に
-re-pin すること。
+行った場合は、同じコミットで `scripts/repin_pdf_hashes.py`（PDF 5 本の
+sha256 を実測して `frozen_pdf_hashes.json` を上書きするだけの小さな
+helper）を実行して意図的に re-pin し、re-pin 前に生成 PDF を目視
+（Preview.app 等）でレビューして意図した内容であることを確認してから
+commit すること。`frozen_pdf_hashes.json` の path 集合は
+`icsr8.harness_tier4.FROZEN_OUTPUT_PATHS` の PDF 集合と set 完全一致で
+なければならず、`verify_report.py` がそれを構造的に検査する（entry の
+削除・追加・重複のいずれも検出する）。
 
 `results/*.csv` は本文値の元になる中間 CSV で git 管理下にあるが、
 Mac(Accelerate) と Linux(OpenBLAS) の BLAS 実装差で ULP レベルにドリフトするため
@@ -95,7 +101,8 @@ byte 一致契約の対象外である。報告書本文の数値は `%.2f` を�
 `results/*.csv` は git 管理下にあるため、フレッシュクローンでも生成済みの状態で
 存在する。CSV を再生成したい場合のみ、以下のコマンドを回す
 （凍結対象の表 TeX と図 PDF・`results/method_diagnostics.csv` も同時に再生される。
-HEAD と byte 一致するはず）。
+表 TeX は HEAD と byte 一致するはずだが、図 PDF は CreationDate drift のため
+byte 一致せず `frozen_pdf_hashes.json` の re-pin が必要——上記「凍結契約」節参照）。
 
 ```bash
 uv run python scripts/regenerate_main_body.py

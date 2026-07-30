@@ -184,8 +184,11 @@ Colab に `uv` は入っていない。`!python` （素の python 実行）で�
 
 引数は取らない。CSV・表 TeX・図 PDF・`results/method_diagnostics.csv` は
 すべて正規パス（`results/`・`doc/final_report/{tables,figures}`）へ
-直接書かれる（tracked ファイルと byte 一致するはずなので、旧版のように
-`results/colab/` へ隔離する必要が無くなった）。
+直接書かれる（表 TeX は tracked ファイルと byte 一致するはずなので、旧版の
+ように `results/colab/` へ隔離する必要が無くなった。図 PDF は savefig の
+CreationDate 埋め込みで再生成のたびに byte が変わるため byte 一致せず、
+`scripts/repin_pdf_hashes.py` で `frozen_pdf_hashes.json` を re-pin し、
+生成 PDF を目視レビューしてから commit する必要がある）。
 
 ### Tier 4（7 手法・full）
 

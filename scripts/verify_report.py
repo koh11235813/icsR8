@@ -152,6 +152,47 @@ def verify_main_body_bytes() -> None:
     check(expected_lolo == got_lolo, "lolo.tex: CSV からの再構成と不一致（byte 比較）")
 
 
+def _verify_pdf_hash_manifest_coverage() -> None:
+    """`frozen_pdf_hashes.json` の path 集合が凍結 PDF 集合と過不足なく一致するか検証する。
+
+    2026-07-30 codex round2 finding NEW-1: 旧 `verify_pdf_hashes` は json の
+    entries をただ反復するだけだったため、entry を丸ごと 1 件消しても
+    （その PDF に対する hash 検査自体が走らなくなるだけで）gate は素通り
+    していた（手元で実験して確認済み）。`icsr8.harness_tier4.
+    FROZEN_OUTPUT_PATHS`（凍結成果物の allowlist 定義、本モジュールとは
+    独立に保守される）の中の `.pdf` 拡張子だけを正とし、manifest の
+    path 集合と set 完全一致であることを assert する——entry の削除・
+    追加・重複のいずれも構造的に検出できるようにするのがこの関数の目的。
+    """
+    from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS  # noqa: PLC0415 - 加算モジュールの局所 import
+
+    frozen_pdfs = {
+        str(p.relative_to(ROOT)) for p in FROZEN_OUTPUT_PATHS if p.suffix == ".pdf"
+    }
+    if not FROZEN_PDF_HASHES_JSON.exists():
+        return  # 存在チェック自体は呼び出し側 verify_pdf_hashes が別途報告する
+    entries = json.loads(FROZEN_PDF_HASHES_JSON.read_text(encoding="utf-8"))
+    paths = [e["path"] for e in entries]
+    manifest_pdfs = set(paths)
+
+    missing = sorted(frozen_pdfs - manifest_pdfs)
+    extra = sorted(manifest_pdfs - frozen_pdfs)
+    dupes = sorted({p for p in paths if paths.count(p) > 1})
+
+    check(
+        not missing,
+        f"{FROZEN_PDF_HASHES_JSON.name}: manifest missing entries for frozen PDFs: {missing}",
+    )
+    check(
+        not extra,
+        f"{FROZEN_PDF_HASHES_JSON.name}: manifest has entries not in frozen set: {extra}",
+    )
+    check(
+        not dupes,
+        f"{FROZEN_PDF_HASHES_JSON.name}: manifest has duplicate entries: {dupes}",
+    )
+
+
 def verify_pdf_hashes(*, skip: bool = False) -> None:
     """凍結図 PDF 5 本の sha256 が `scripts/frozen_pdf_hashes.json` と一致するか検証する。
 
@@ -165,12 +206,17 @@ def verify_pdf_hashes(*, skip: bool = False) -> None:
     再生成のたびに CreationDate が変わり同一 Mac 上でも byte 一致しない
     （`cdf_lolo_tier4.pdf` のみ `_plot_cdf_tier4` が metadata を落としているため
     決定的）。したがって `regenerate_main_body.py` を正当に再実行した後は、
-    この json を意図的な reviewed act として re-pin する必要がある
-    （CLAUDE.md §1 参照）。
+    `scripts/repin_pdf_hashes.py` でこの json を意図的な reviewed act として
+    re-pin する必要がある（re-pin 後は生成 PDF を目視レビューしてから
+    commit すること。CLAUDE.md §1 参照）。
 
     `--skip-pdf-hash`（`skip=True`）は Linux 等 non-Mac 開発環境向けの
     エスケープハッチ。既定は常に検査する（README の Mac 前提運用と整合）。
+    manifest の coverage（entries が凍結 PDF 集合と過不足なく一致するか）は
+    hash 値そのものと違って OS 非依存の構造検査なので、`skip=True` でも
+    スキップせず常に行う。
     """
+    _verify_pdf_hash_manifest_coverage()
     if skip:
         print("[verify_report] pdf hash 検査は --skip-pdf-hash によりスキップ")
         return
@@ -329,6 +375,14 @@ def verify_tier4() -> None:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """CLI 引数を解釈する。
+
+    フラグは `--skip-pdf-hash` の 1 つだけに絞ってある。凍結図 PDF の sha256 は
+    Mac(Accelerate) 前提で pin されているため、Linux 等 non-Mac 開発環境では
+    数値が同一でも savefig の環境差で一致しない可能性がある — その環境でも
+    表数値・参照パス等の他の検査は素通りさせたい、という一点だけがこの
+    フラグの存在理由。
+    """
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--skip-pdf-hash",
@@ -339,6 +393,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """全検査を順に走らせ、1 件でも failures に積まれれば exit 1 で報告する。
+
+    検査を関数ごとに分けているのは診断力のため（どの契約が壊れたか名指しで
+    分かる）だが、実行はここで一括して行う——CI やコミット前フックが
+    「これ 1 本を通せば表・図・参照パス・診断値・Tier4 まで全部見た」と
+    言えるようにするのがこの関数の存在意義。
+    """
     args = _parse_args(argv)
 
     verify_table(ROOT / "results" / "protocol_a.csv",

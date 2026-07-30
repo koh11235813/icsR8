@@ -1,22 +1,22 @@
 [
   {
-    "path": "doc/final_report/figures/cdf_protocol_a_forward_to_backward.pdf",
-    "sha256": "ab7c0761f504f7b1bcfab640d2d08e0879838af9fca191fd4625846d18075e4c"
+    "path": "doc/final_report/figures/cdf_lolo.pdf",
+    "sha256": "93925a4d8f58a21a5a6c1c36d18ffe43cd313c2837811604ffd9376576a4ab08"
+  },
+  {
+    "path": "doc/final_report/figures/cdf_lolo_tier4.pdf",
+    "sha256": "79792f406a48149d1dd61e5f9bce12b74e330cce0edc85699b6abec12128f406"
   },
   {
     "path": "doc/final_report/figures/cdf_protocol_a_backward_to_forward.pdf",
     "sha256": "6bc709dd9218ec28da0f020060386b5d8544d58b5e2ab94591e9d8431bd52d49"
   },
   {
-    "path": "doc/final_report/figures/cdf_lolo.pdf",
-    "sha256": "93925a4d8f58a21a5a6c1c36d18ffe43cd313c2837811604ffd9376576a4ab08"
+    "path": "doc/final_report/figures/cdf_protocol_a_forward_to_backward.pdf",
+    "sha256": "ab7c0761f504f7b1bcfab640d2d08e0879838af9fca191fd4625846d18075e4c"
   },
   {
     "path": "doc/final_report/figures/segment_heatmap.pdf",
     "sha256": "d648d7d8c5fbe8f7d22082b4949614b268c982cee7e9fd46f6fdca6ddcfb0d24"
-  },
-  {
-    "path": "doc/final_report/figures/cdf_lolo_tier4.pdf",
-    "sha256": "79792f406a48149d1dd61e5f9bce12b74e330cce0edc85699b6abec12128f406"
   }
 ]
