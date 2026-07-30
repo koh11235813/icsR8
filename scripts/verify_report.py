@@ -155,14 +155,17 @@ def verify_main_body_bytes() -> None:
 def _verify_pdf_hash_manifest_coverage() -> None:
     """`frozen_pdf_hashes.json` の path 集合が凍結 PDF 集合と過不足なく一致するか検証する。
 
-    2026-07-30 codex round2 finding NEW-1: 旧 `verify_pdf_hashes` は json の
-    entries をただ反復するだけだったため、entry を丸ごと 1 件消しても
-    （その PDF に対する hash 検査自体が走らなくなるだけで）gate は素通り
-    していた（手元で実験して確認済み）。`icsr8.harness_tier4.
-    FROZEN_OUTPUT_PATHS`（凍結成果物の allowlist 定義、本モジュールとは
-    独立に保守される）の中の `.pdf` 拡張子だけを正とし、manifest の
-    path 集合と set 完全一致であることを assert する——entry の削除・
-    追加・重複のいずれも構造的に検出できるようにするのがこの関数の目的。
+    # 2026-07-30: 旧 `verify_pdf_hashes` は json の entries をただ反復するだけ
+    # だったため、entry を丸ごと 1 件消しても (その PDF に対する hash 検査自体
+    # が走らなくなるだけで) gate は素通りしていた。`icsr8.harness_tier4.
+    # FROZEN_OUTPUT_PATHS` (凍結成果物の allowlist 定義、本モジュールとは
+    # 独立に保守される) の中の `.pdf` 拡張子だけを正とし、manifest の path
+    # 集合と set 完全一致であることを assert する — entry の削除・追加・重複
+    # のいずれも構造的に検出できるようにするのがこの関数の目的。
+    #
+    # manifest ファイル自体の不在も本関数で failure 記録する — `verify_pdf_hashes`
+    # 側の存在チェックは `--skip-pdf-hash` の early-return より後ろにあり、
+    # ここで報告しないと「manifest 削除 + skip」で silent pass する経路になる。
     """
     from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS  # noqa: PLC0415 - 加算モジュールの局所 import
 
@@ -170,7 +173,8 @@ def _verify_pdf_hash_manifest_coverage() -> None:
         str(p.relative_to(ROOT)) for p in FROZEN_OUTPUT_PATHS if p.suffix == ".pdf"
     }
     if not FROZEN_PDF_HASHES_JSON.exists():
-        return  # 存在チェック自体は呼び出し側 verify_pdf_hashes が別途報告する
+        check(False, f"{FROZEN_PDF_HASHES_JSON.name}: hash 一覧 json が存在しない")
+        return
     entries = json.loads(FROZEN_PDF_HASHES_JSON.read_text(encoding="utf-8"))
     paths = [e["path"] for e in entries]
     manifest_pdfs = set(paths)
@@ -217,11 +221,10 @@ def verify_pdf_hashes(*, skip: bool = False) -> None:
     スキップせず常に行う。
     """
     _verify_pdf_hash_manifest_coverage()
+    if not FROZEN_PDF_HASHES_JSON.exists():
+        return  # coverage 関数側で failure を記録済み。以降の hash 比較は json 不在で不可能
     if skip:
         print("[verify_report] pdf hash 検査は --skip-pdf-hash によりスキップ")
-        return
-    if not FROZEN_PDF_HASHES_JSON.exists():
-        failures.append(f"{FROZEN_PDF_HASHES_JSON.name}: hash 一覧 json が存在しない")
         return
     entries = json.loads(FROZEN_PDF_HASHES_JSON.read_text(encoding="utf-8"))
     for entry in entries:

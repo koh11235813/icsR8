@@ -531,12 +531,11 @@ def test_frozen_output_paths_is_nine_files(repo_root):
 
 
 def test_frozen_pdf_hashes_manifest_covers_frozen_pdfs(repo_root):
-    # 2026-07-30 codex round2 NEW-1: scripts/verify_report.py の
-    # _verify_pdf_hash_manifest_coverage() が実装する set 完全一致契約を、
-    # 独立した経路（scripts/ を import せず、FROZEN_OUTPUT_PATHS と json を
-    # 直接読む）で pin する。verify_report.py 側のロジックが将来壊れても、
-    # この pytest は json ファイルと allowlist 定数を直接突き合わせるため
-    # 検出できる。
+    # 2026-07-30: scripts/verify_report.py の _verify_pdf_hash_manifest_coverage()
+    # が実装する set 完全一致契約を、独立した経路（scripts/ を import せず、
+    # FROZEN_OUTPUT_PATHS と json を直接読む）で pin する。verify_report.py 側の
+    # ロジックが将来壊れても、この pytest は json ファイルと allowlist 定数を
+    # 直接突き合わせるため検出できる。
     from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS
 
     frozen_pdfs = {

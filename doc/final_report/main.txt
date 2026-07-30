@@ -541,6 +541,13 @@ A.5  Limitations
    巻き込む事故は構造的に起こり得ない．
 4. uv run python scripts/regenerate_appendix_a.py で付録 A（Tier 4，
    7 手法）の CSV・図・TeX 断片を再生成．
-5. (cd doc/final_report && latexmk -lualatex main.tex) で本 PDF をビルド．
-6. リポジトリルートで uv run python scripts/verify_report.py を実行し，
+5. uv run python scripts/repin_pdf_hashes.py で凍結図 PDF 5 本の sha256
+   を scripts/frozen_pdf_hashes.json に再 pin し，生成された図 PDF
+   （doc/final_report/figures/cdf_lolo.pdf・cdf_protocol_a_*.pdf・
+   segment_heatmap.pdf・cdf_lolo_tier4.pdf）を目視レビューして意図した
+   内容であることを確認．main body 図 4 本は savefig の CreationDate
+   埋め込みで再生成のたびに byte が変わるため，この re-pin なしでは
+   verify_report.py の hash gate が落ちる．
+6. (cd doc/final_report && latexmk -lualatex main.tex) で本 PDF をビルド．
+7. リポジトリルートで uv run python scripts/verify_report.py を実行し，
    表数値・診断値・参照パスの整合を検証．

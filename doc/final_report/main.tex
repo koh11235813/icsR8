@@ -322,6 +322,7 @@ Protocol~A を表\ref{tab:tier4_pa}，LOLO を表\ref{tab:tier4_lolo}，LOLO 誤
   \item \texttt{uv run pytest}（516 テスト）が全て通ることを確認．
   \item \texttt{uv run python scripts/regenerate\_main\_body.py} で本文 15 手法の CSV・図・TeX 断片（および \texttt{results/method\_diagnostics.csv}，\S3 引用値の根拠）を再生成．引数を取らない sanctioned writer であり，旧 \texttt{run\_all\_methods.py --methods}〈手法名〉の打ち間違いで Tier~4 手法まで巻き込む事故は構造的に起こり得ない．
   \item \texttt{uv run python scripts/regenerate\_appendix\_a.py} で付録 A（Tier~4，7 手法）の CSV・図・TeX 断片を再生成．
+  \item \texttt{uv run python scripts/repin\_pdf\_hashes.py} で凍結図 PDF 5 本の sha256 を \texttt{scripts/frozen\_pdf\_hashes.json} に再 pin し，生成された図 PDF（\texttt{doc/final\_report/figures/cdf\_lolo.pdf}・\texttt{cdf\_protocol\_a\_*.pdf}・\texttt{segment\_heatmap.pdf}・\texttt{cdf\_lolo\_tier4.pdf}）を目視レビューして意図した内容であることを確認．main body 図 4 本は \texttt{savefig} の \texttt{CreationDate} 埋め込みで再生成のたびに byte が変わるため，この re-pin なしでは \texttt{verify\_report.py} の hash gate が落ちる．
   \item \texttt{(cd doc/final\_report \&\& latexmk -lualatex main.tex)} で本 PDF をビルド．
   \item リポジトリルートで \texttt{uv run python scripts/verify\_report.py} を実行し，表数値・診断値・参照パスの整合を検証．
 \end{enumerate}
