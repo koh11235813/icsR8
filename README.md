@@ -81,7 +81,7 @@ matplotlib の既定 `savefig` が wall-clock `CreationDate` を埋め込むた�
 `metadata={"CreationDate": None}` を渡しており決定的）。正当な再生成を
 行った場合は、同じコミットで `scripts/repin_pdf_hashes.py`（PDF 5 本の
 sha256 を実測して `frozen_pdf_hashes.json` を上書きするだけの小さな
-helper）を実行して意図的に re-pin し、re-pin 前に生成 PDF を目視
+helper）を実行して意図的に re-pin し、その上で生成 PDF を目視
 （Preview.app 等）でレビューして意図した内容であることを確認してから
 commit すること。`frozen_pdf_hashes.json` の path 集合は
 `icsr8.harness_tier4.FROZEN_OUTPUT_PATHS` の PDF 集合と set 完全一致で

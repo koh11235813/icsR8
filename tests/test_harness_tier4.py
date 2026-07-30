@@ -12,6 +12,7 @@ Tier 4 の 7 手法は並行実装中のため、ここでは存在に依存せ�
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 import sys
 import time
@@ -527,6 +528,26 @@ def test_frozen_output_paths_is_nine_files(repo_root):
 
     assert FROZEN_OUTPUT_PATHS == {p.resolve() for p in _frozen_sentinels(repo_root)}
     assert len(FROZEN_OUTPUT_PATHS) == 9
+
+
+def test_frozen_pdf_hashes_manifest_covers_frozen_pdfs(repo_root):
+    # 2026-07-30 codex round2 NEW-1: scripts/verify_report.py の
+    # _verify_pdf_hash_manifest_coverage() が実装する set 完全一致契約を、
+    # 独立した経路（scripts/ を import せず、FROZEN_OUTPUT_PATHS と json を
+    # 直接読む）で pin する。verify_report.py 側のロジックが将来壊れても、
+    # この pytest は json ファイルと allowlist 定数を直接突き合わせるため
+    # 検出できる。
+    from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS
+
+    frozen_pdfs = {
+        str(p.relative_to(repo_root)) for p in FROZEN_OUTPUT_PATHS if p.suffix == ".pdf"
+    }
+    manifest = json.loads(
+        (repo_root / "scripts" / "frozen_pdf_hashes.json").read_text(encoding="utf-8")
+    )
+    paths = [e["path"] for e in manifest]
+    assert set(paths) == frozen_pdfs
+    assert len(paths) == len(set(paths))  # 重複エントリが無い
 
 
 def test_run_tier4_refuses_frozen_output(repo_root):
