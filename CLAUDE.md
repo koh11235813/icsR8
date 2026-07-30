@@ -54,7 +54,7 @@ Cautions for changing this repository. Each rule below was codified after an act
 ## 3. Always pass both gates after a change
 
 ```bash
-uv run pytest                           # 515 tests (freeze guard, leak contract, published-value reproduction)
+uv run pytest                           # 516 tests (freeze guard, leak contract, published-value reproduction)
 uv run python scripts/verify_report.py  # byte-level CSV↔TeX reconciliation + main.tex reference-path existence
 ```
 

@@ -533,7 +533,7 @@ A.5  Limitations
 ----------------------------------------------------------------------
 
 1. uv sync で依存を解決．
-2. uv run pytest（515 テスト）が全て通ることを確認．
+2. uv run pytest（516 テスト）が全て通ることを確認．
 3. uv run python scripts/regenerate_main_body.py で本文 15 手法の
    CSV・図・TeX 断片（および results/method_diagnostics.csv，§3 引用値の
    根拠）を再生成．引数を取らない sanctioned writer であり，旧
