@@ -308,7 +308,7 @@ def make_figures(
     として列挙する）を直接書ける唯一の書き手候補になる。以前は
     `icsr8.report.regenerate_main_body()` が呼び出し側でこの関数を包んで
     ガードしていたが、それでは harness.py を直接 import して呼ぶ経路が
-    無防備だった（Codex review finding 1）。`writer_id` を渡さない呼び出しは
+    無防備だった (2026-07-29 review pivot で判明)。`writer_id` を渡さない呼び出しは
     凍結ディレクトリへ書けない。
     """
     # Why not top-level import: harness_tier4.py が `from icsr8.harness import
@@ -435,7 +435,7 @@ def make_tex_tables(
 
     2026-07-29 allowlist 押し下げ: 凍結対象 TeX 2 本
     （`protocol_a.tex` / `lolo.tex`）を直接書ける唯一の書き手候補になる
-    （Codex review finding 1。詳細は make_figures の docstring 参照）。
+    (詳細は make_figures の docstring 参照)。
     """
     from icsr8.harness_tier4 import _guard_frozen  # noqa: PLC0415 - 循環 import 回避
 

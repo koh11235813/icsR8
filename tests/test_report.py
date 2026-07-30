@@ -111,7 +111,7 @@ def test_regenerate_main_body_smoke(monkeypatch):
     assert captured["make_figures_called"]
     assert captured["make_tex_tables_called"]
     assert captured["write_diagnostics_called"]
-    # Codex review finding 1（allowlist 押し下げ）: make_figures/make_tex_tables
+    # 2026-07-29 review pivot (allowlist 押し下げ): make_figures/make_tex_tables
     # 自身が凍結ガードを持つようになったので、regenerate_main_body() が
     # sanctioned writer 識別子を正しく渡していることも配線契約に含める。
     assert captured["make_figures_writer_id"] == "icsr8.report.regenerate_main_body"

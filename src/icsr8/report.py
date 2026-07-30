@@ -159,7 +159,7 @@ def regenerate_main_body() -> None:
     このモジュールが `icsr8.report.regenerate_main_body` として
     `harness_tier4._SANCTIONED_WRITERS` に登録された sanctioned writer。
     `_guard_frozen` は 2026-07-29 以降 `harness.make_figures` /
-    `harness.make_tex_tables` 自身の冒頭にも押し下げられている（Codex review
+    `harness.make_tex_tables` 自身の冒頭にも押し下げられている（2026-07-29 review pivot
     finding 1）が、この関数自身の冒頭でも同じ判定を先に通す
     （belt-and-suspenders — `harness_tier4.run_tier4` が既に持つ設計と対称。
     冒頭で reject すれば、書き込み不可能な呼び出しのために ~8 分の sweep

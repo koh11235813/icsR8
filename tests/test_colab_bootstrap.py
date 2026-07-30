@@ -753,7 +753,7 @@ def test_stage_reuse_tolerates_regenerated_report_tables_and_figures(tmp_path, c
     上書きされても reuse を妨げない（doc/final_report 直下の main.tex 等は
     引き続き検査対象）。
 
-    2026-07-30 Codex review finding 3 対応: docs/COLAB.md の regen 手順は
+    2026-07-30 review pivot: docs/COLAB.md の regen 手順は
     `regenerate_main_body.py` / `regenerate_appendix_a.py`（sanctioned writer）を
     staged 作業コピー上で直接実行する。旧実装は results/ 以外を検査対象に
     含めていたため、regen 直後の 2 回目の bootstrap 呼び出しで

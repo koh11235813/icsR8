@@ -155,7 +155,7 @@ def test_make_tex_tables_creates_fragments(protocol_a_run, lolo_run, tmp_path):
         assert method in proto_tex
 
 
-# --- allowlist 押し下げ（Codex review finding 1）-----------------------------
+# --- allowlist 押し下げ (2026-07-29 review pivot) ----------------------------
 #
 # make_figures/make_tex_tables 自体が凍結ガードを持つことを、実 repo_root の
 # 凍結ディレクトリを対象に検証する。harness.py を直接 import して呼ぶ経路

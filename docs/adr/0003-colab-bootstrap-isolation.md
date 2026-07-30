@@ -185,7 +185,7 @@ bootstrap 自体が icsr8 に依存できない。
 
 Amendment 11（`results/` を staged-integrity 検査から除外）と同じ理由で、
 `doc/final_report/tables/` と `doc/final_report/figures/` も除外対象に加えた
-（Codex review finding 3）。ADR-0004 の `regenerate_main_body()` /
+（2026-07-30 review pivot）。ADR-0004 の `regenerate_main_body()` /
 `regenerate_appendix_a()` は sanctioned writer として staged 作業コピー上の
 この 2 ディレクトリを正規動作で書き換えるため、`results/` だけを除外していた
 旧実装では regen 直後の 2 回目の `bootstrap()` 呼び出しで「staged tree が

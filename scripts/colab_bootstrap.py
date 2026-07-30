@@ -553,7 +553,7 @@ def stage_working_copy(source: Path, workdir: Path, *, refresh: bool = False) ->
         # results/ はパイプライン所有の可変領域なので整合性検査の対象から外す（外さないと、
         # スイープ実行後の 2 冊目の notebook で bootstrap の再利用が拒否され、
         # 生成済み results もろとも作業コピーが作り直されてしまう）。
-        # 2026-07-30 Codex review finding 3 対応: docs/COLAB.md の regen 手順
+        # 2026-07-30 review pivot: docs/COLAB.md の regen 手順
         # （regenerate_main_body.py / regenerate_appendix_a.py）は staged 作業
         # コピー上の doc/final_report/{tables,figures} も正規動作として書き換える
         # （sanctioned writer — src/icsr8/report.py 参照）。results/ と同じ理由で

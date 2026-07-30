@@ -152,7 +152,7 @@ def verify_main_body_bytes() -> None:
     check(expected_lolo == got_lolo, "lolo.tex: CSV からの再構成と不一致（byte 比較）")
 
 
-def _verify_pdf_hash_manifest_coverage() -> None:
+def _verify_pdf_hash_manifest_coverage() -> bool:
     """`frozen_pdf_hashes.json` の path 集合が凍結 PDF 集合と過不足なく一致するか検証する。
 
     # 2026-07-30: 旧 `verify_pdf_hashes` は json の entries をただ反復するだけ
@@ -163,9 +163,10 @@ def _verify_pdf_hash_manifest_coverage() -> None:
     # 集合と set 完全一致であることを assert する — entry の削除・追加・重複
     # のいずれも構造的に検出できるようにするのがこの関数の目的。
     #
-    # manifest ファイル自体の不在も本関数で failure 記録する — `verify_pdf_hashes`
-    # 側の存在チェックは `--skip-pdf-hash` の early-return より後ろにあり、
-    # ここで報告しないと「manifest 削除 + skip」で silent pass する経路になる。
+    # manifest ファイル自体の不在も本関数で failure 記録し、bool を返す — 存在
+    # 判定を coverage/caller で二重管理すると `--skip-pdf-hash` の early-return
+    # と噛み合わず silent pass 経路を作る危険がある。存在は本関数だけで判定し、
+    # caller は返値で以降の hash 比較可否を判断する (single source of truth)。
     """
     from icsr8.harness_tier4 import FROZEN_OUTPUT_PATHS  # noqa: PLC0415 - 加算モジュールの局所 import
 
@@ -174,7 +175,7 @@ def _verify_pdf_hash_manifest_coverage() -> None:
     }
     if not FROZEN_PDF_HASHES_JSON.exists():
         check(False, f"{FROZEN_PDF_HASHES_JSON.name}: hash 一覧 json が存在しない")
-        return
+        return False
     entries = json.loads(FROZEN_PDF_HASHES_JSON.read_text(encoding="utf-8"))
     paths = [e["path"] for e in entries]
     manifest_pdfs = set(paths)
@@ -195,24 +196,24 @@ def _verify_pdf_hash_manifest_coverage() -> None:
         not dupes,
         f"{FROZEN_PDF_HASHES_JSON.name}: manifest has duplicate entries: {dupes}",
     )
+    return True
 
 
 def verify_pdf_hashes(*, skip: bool = False) -> None:
     """凍結図 PDF 5 本の sha256 が `scripts/frozen_pdf_hashes.json` と一致するか検証する。
 
-    2026-07-29 Codex review finding 2 対応。この検査は「commit 済みの PDF が
-    hand-edit や意図しない再生成で変わっていないか」の tripwire であり、
-    「Mac 上で図 PDF が byte 再現可能」という主張ではない —
-    `harness._plot_cdf` / `_plot_segment_heatmap` は savefig に
-    metadata={"CreationDate": None} を渡していない（凍結中の harness.py は
-    数値以外の理由で編集できないため）ので、main body 図 4 本
-    （cdf_lolo.pdf・cdf_protocol_a_*.pdf 2 本・segment_heatmap.pdf）は
-    再生成のたびに CreationDate が変わり同一 Mac 上でも byte 一致しない
-    （`cdf_lolo_tier4.pdf` のみ `_plot_cdf_tier4` が metadata を落としているため
-    決定的）。したがって `regenerate_main_body.py` を正当に再実行した後は、
-    `scripts/repin_pdf_hashes.py` でこの json を意図的な reviewed act として
-    re-pin する必要がある（re-pin 後は生成 PDF を目視レビューしてから
-    commit すること。CLAUDE.md §1 参照）。
+    # 2026-07-29: この検査は「commit 済みの PDF が hand-edit や意図しない再生成で
+    # 変わっていないか」の tripwire であり、「Mac 上で図 PDF が byte 再現可能」
+    # という主張ではない — `harness._plot_cdf` / `_plot_segment_heatmap` は savefig に
+    # metadata={"CreationDate": None} を渡していない (凍結中の harness.py は
+    # 数値以外の理由で編集できないため) ので、main body 図 4 本
+    # (cdf_lolo.pdf・cdf_protocol_a_*.pdf 2 本・segment_heatmap.pdf) は
+    # 再生成のたびに CreationDate が変わり同一 Mac 上でも byte 一致しない
+    # (`cdf_lolo_tier4.pdf` のみ `_plot_cdf_tier4` が metadata を落としているため
+    # 決定的)。したがって `regenerate_main_body.py` を正当に再実行した後は、
+    # `scripts/repin_pdf_hashes.py` でこの json を意図的な reviewed act として
+    # re-pin する必要がある (re-pin 後は生成 PDF を目視レビューしてから
+    # commit すること。CLAUDE.md §1 参照)。
 
     `--skip-pdf-hash`（`skip=True`）は Linux 等 non-Mac 開発環境向けの
     エスケープハッチ。既定は常に検査する（README の Mac 前提運用と整合）。
@@ -220,9 +221,8 @@ def verify_pdf_hashes(*, skip: bool = False) -> None:
     hash 値そのものと違って OS 非依存の構造検査なので、`skip=True` でも
     スキップせず常に行う。
     """
-    _verify_pdf_hash_manifest_coverage()
-    if not FROZEN_PDF_HASHES_JSON.exists():
-        return  # coverage 関数側で failure を記録済み。以降の hash 比較は json 不在で不可能
+    if not _verify_pdf_hash_manifest_coverage():
+        return  # manifest 不在。以降の hash 比較は不可能 (failure は coverage 側で記録済み)
     if skip:
         print("[verify_report] pdf hash 検査は --skip-pdf-hash によりスキップ")
         return
@@ -328,7 +328,7 @@ def verify_tier4() -> None:
             check(bool((self_delta == 0.0).all()),
                   f"tier4 {name}: 参照 {ref} の自己 delta が 0 でない")
 
-    # codex 最終レビュー反映: 総行数だけでなく method 単位の行数・一意キー・
+    # 2026-07-29 review pivot: 総行数だけでなく method 単位の行数・一意キー・
     # 有意差判断に使う CI 4 列（*_lo/*_hi）まで契約として固定する。
     check(bool(proto.groupby("method").size().eq(2).all()),
           "tier4 protocol_a: method ごとの fold 行数が 2 でない")

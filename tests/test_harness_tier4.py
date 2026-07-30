@@ -579,7 +579,7 @@ def test_guard_frozen_rejects_unknown_writer_id(repo_root):
 
 
 def test_make_figures_tier4_refuses_frozen_output(repo_root):
-    # Codex review finding 1: make_figures_tier4 自身が凍結ガードを持つことを、
+    # 2026-07-29 review pivot: make_figures_tier4 自身が凍結ガードを持つことを、
     # run_tier4() を経由しない直接呼び出しで検証する（押し下げ前は run_tier4()
     # のガードだけが頼りで、この関数を直接 import して呼ぶ経路が無防備だった）。
     figures_dir = repo_root / "doc" / "final_report" / "figures"

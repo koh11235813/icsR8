@@ -62,7 +62,7 @@ Colab 上の notebook validation のたびに毎回 8 分 + 45〜60 分 + 12 秒
    （引数ゼロの薄い CLI）と `scripts/run_experimental_tier4.py`
    （`--methods`/`--output`/`--tables-dir`/`--figures-dir` 全 required、
    sanctioned writer ではない）に置き換える。
-5. **（2026-07-29 Codex review finding 1 対応）** `_guard_frozen` の呼び出しを
+5. **（2026-07-29 review pivot）** `_guard_frozen` の呼び出しを
    `harness.make_figures` / `harness.make_tex_tables` /
    `harness_tier4.make_figures_tier4` / `harness_tier4.make_tex_tables_tier4`
    という実際に書き込みを行う低レベル関数自身の冒頭へ押し下げる。導入当初は
@@ -97,7 +97,7 @@ Colab 上の notebook validation のたびに毎回 8 分 + 45〜60 分 + 12 秒
   `harness_tier4.py` 自体のテスト可能な純関数群は変更していないため、
   既存のユニットテスト資産はそのまま有効。
 - **(iv) `writer_id` は Python の言語機能では偽装を防げない自己申告文字列で
-  ある**（2026-07-29 Codex review finding 1 対応で判明・明記）: `_guard_frozen`
+  ある**（2026-07-29 review pivot で判明・明記）: `_guard_frozen`
   は動的スタック検査をしない。悪意ある in-process caller が
   `writer_id="icsr8.report.regenerate_main_body"` という文字列を手で書けば、
   `harness.make_figures` / `harness.make_tex_tables` /

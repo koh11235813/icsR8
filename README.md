@@ -16,7 +16,7 @@ LOLO 評価で平均誤差 **0.72 m** (≤2 m 率 90%) を達成し、目標の 
 ├── src/icsr8/            推定ライブラリ本体（詳細は「モジュール構成」）
 │   └── methods/          手法レジストリ（1 ファイル = 1 手法）
 ├── scripts/              評価・検証・再生成の CLI
-├── tests/                pytest（516 テスト。公表値再現・リーク契約・凍結ガード含む）
+├── tests/                pytest（518 テスト。公表値再現・リーク契約・凍結ガード含む）
 ├── data/                 測定データ（*.zip が原本。展開ディレクトリは直接編集しない）
 ├── doc/
 │   ├── final_report/     最終報告書 (LuaLaTeX)。tables/ と figures/ は生成物
@@ -143,7 +143,7 @@ uv run python scripts/run_experimental_tier4.py --methods wcl_virtual_ap --smoke
 ### 検証ゲート
 
 ```bash
-uv run pytest                                      # 516 テスト
+uv run pytest                                      # 518 テスト
 uv run python scripts/verify_report.py             # 表数値・診断値・TeX参照パスの整合検証
 ```
 

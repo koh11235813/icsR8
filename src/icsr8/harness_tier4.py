@@ -517,7 +517,7 @@ def make_figures_tier4(
 
     2026-07-29 allowlist 押し下げ: 凍結対象 `cdf_lolo_tier4.pdf` を直接書ける
     唯一の書き手候補になる。以前は `run_tier4()` の冒頭ガードだけが頼りで、
-    本関数を直接 import して呼ぶ経路は無防備だった（Codex review finding 1）。
+    本関数を直接 import して呼ぶ経路は無防備だった (2026-07-29 review pivot で判明)。
     """
     _guard_frozen([Path(outdir) / "cdf_lolo_tier4.pdf"], writer_id=writer_id)
 
@@ -618,7 +618,7 @@ def make_tex_tables_tier4(
     """booktabs 風 tabular 断片（tier4_protocol_a.tex / tier4_lolo.tex）を書く。
 
     2026-07-29 allowlist 押し下げ: 凍結対象 TeX 2 本を直接書ける唯一の
-    書き手候補になる（Codex review finding 1。詳細は make_figures_tier4 参照）。
+    書き手候補になる (詳細は make_figures_tier4 参照)。
     """
     outdir = Path(outdir)
     _guard_frozen(
